@@ -22,6 +22,11 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://ci:ci@localhost:5433/ci_insights"
 
+    # Shared with GitHub; every webhook body is HMAC-verified against it. No
+    # default, so a deploy without it fails at startup rather than at the first
+    # forged request.
+    github_webhook_secret: str
+
     # Statements slower than this are logged by the worker's slow-query hook (SPEC §9).
     slow_query_ms: int = 500
 

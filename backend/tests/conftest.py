@@ -6,11 +6,14 @@ import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
+from app.db import session_scope
+from app.main import create_app
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -65,3 +68,17 @@ async def db_session(database_url: str) -> AsyncIterator[AsyncSession]:
             yield session
         await transaction.rollback()
     await engine.dispose()
+
+
+@pytest.fixture
+async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """The real ASGI app, talking to the test session so writes roll back."""
+    app = create_app()
+
+    async def _session_override() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    app.dependency_overrides[session_scope] = _session_override
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://ci-insights.test") as http_client:
+        yield http_client
