@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Statements slower than this are logged by the worker's slow-query hook (SPEC §9).
     slow_query_ms: int = 500
 
+    worker_batch_size: int = 10
+    worker_poll_seconds: float = 1.0
+
 
 @lru_cache
 def get_settings() -> Settings:
