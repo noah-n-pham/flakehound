@@ -1,0 +1,12 @@
+pyproject.toml
+app/__init__.py
+app/config.py
+app/db.py
+app/logging.py
+app/models.py
+ci_insights.egg-info/PKG-INFO
+ci_insights.egg-info/SOURCES.txt
+ci_insights.egg-info/dependency_links.txt
+ci_insights.egg-info/requires.txt
+ci_insights.egg-info/top_level.txt
+tests/test_infra.py
