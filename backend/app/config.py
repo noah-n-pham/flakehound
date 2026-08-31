@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # forged request.
     github_webhook_secret: str
 
+    # Gates every read endpoint. Must be byte-identical here, in Secrets Manager,
+    # and in Vercel's environment (H-004), or every read returns 401.
+    internal_api_token: str
+
     # Statements slower than this are logged by the worker's slow-query hook (SPEC §9).
     slow_query_ms: int = 500
 
