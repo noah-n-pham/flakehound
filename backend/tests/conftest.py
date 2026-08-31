@@ -8,6 +8,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 
@@ -46,8 +47,21 @@ def database_url() -> str:
 
 @pytest.fixture
 async def db_session(database_url: str) -> AsyncIterator[AsyncSession]:
-    engine = create_async_engine(database_url, poolclass=None)
-    maker = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
-    async with maker() as session:
-        yield session
+    """A session whose writes are discarded when the test ends.
+
+    The session joins an outer transaction as a savepoint, so a test may commit
+    and still leave no trace — including after an IntegrityError.
+    """
+    engine = create_async_engine(database_url, poolclass=NullPool)
+    async with engine.connect() as connection:
+        transaction = await connection.begin()
+        maker = async_sessionmaker(
+            bind=connection,
+            expire_on_commit=False,
+            autoflush=False,
+            join_transaction_mode="create_savepoint",
+        )
+        async with maker() as session:
+            yield session
+        await transaction.rollback()
     await engine.dispose()
