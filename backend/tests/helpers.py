@@ -46,9 +46,13 @@ async def deliver(session: AsyncSession, *payloads: dict[str, Any]) -> None:
     `created_at` — `now()` is the transaction's clock — so the dequeue order of a
     batch is not defined. Real deliveries arrive separately anyway, and a signal
     that depends on arrival order is a signal worth testing deliberately.
+
+    The event type comes from the payload's own shape, the way GitHub's header and
+    body agree in a real delivery.
     """
     factory = one_session_factory(session)
     for payload in payloads:
-        enqueue(session, payload)
+        event = "workflow_run" if "workflow_run" in payload else "workflow_job"
+        enqueue(session, payload, event=event)
         await session.flush()
         await run_once(factory, batch_size=10)

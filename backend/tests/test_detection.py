@@ -24,9 +24,14 @@ from tests import payloads
 from tests.helpers import deliver
 
 RUN_ID = 33_549_797_805
+OTHER_RUN_ID = 33_556_989_927
 JOB_NAME = "build and deploy"
 SHA = "995d95020fd5070d19dd1474b66975d1b01e01b3"
 ATTEMPT_JOB_IDS = (99_996_168_477, 99_997_527_370, 99_998_597_127)
+
+# The two real workflows in this repository: `ci` runs the tests, `deploy` ships.
+WORKFLOW_ID = 347_813_653
+OTHER_WORKFLOW_ID = 347_799_093
 
 
 def attempt(
@@ -41,7 +46,7 @@ def attempt(
     total_steps: int | None = None,
 ) -> dict[str, Any]:
     return payloads.workflow_job(
-        job_id=job_id if job_id is not None else _job_id(name, number),
+        job_id=job_id if job_id is not None else _job_id(name, number, run_id),
         run_id=run_id,
         run_attempt=number,
         name=name,
@@ -53,18 +58,43 @@ def attempt(
     )
 
 
-def _job_id(name: str, number: int) -> int:
-    """A synthetic job id, unique per (name, attempt) because it is the primary key.
+def _job_id(name: str, number: int, run_id: int) -> int:
+    """A synthetic job id, unique per (run, attempt, name) because it is the primary key.
 
-    Two legs of one attempt are two separate job executions with two ids, so a
-    helper that derived the id from the attempt alone would silently overwrite one
-    leg with the other.
+    Two legs of one attempt are two separate job executions with two ids, and so are
+    the same job in two runs on one commit. A helper that left any of the three out
+    would silently overwrite one job row with another.
     """
-    return 99_000_000_000 + number * 10_000 + zlib.crc32(name.encode()) % 10_000
+    return 99_000_000_000 + zlib.crc32(f"{run_id}:{number}:{name}".encode()) % 1_000_000
+
+
+def run_event(
+    *,
+    run_id: int = RUN_ID,
+    run_attempt: int = 1,
+    workflow_id: int = WORKFLOW_ID,
+    workflow_name: str = "ci",
+    conclusion: str | None = "success",
+) -> dict[str, Any]:
+    """A `workflow_run` delivery, which is the only event carrying the workflow id."""
+    return payloads.workflow_run(
+        run_id=run_id,
+        run_attempt=run_attempt,
+        workflow_id=workflow_id,
+        workflow_name=workflow_name,
+        conclusion=conclusion,
+        head_sha=SHA,
+    )
 
 
 async def flake_events(session) -> list[FlakeEvent]:
     return list((await session.execute(select(FlakeEvent))).scalars())
+
+
+async def signal(session, name: str) -> list[FlakeEvent]:
+    return list(
+        (await session.execute(select(FlakeEvent).where(FlakeEvent.signal == name))).scalars()
+    )
 
 
 @pytest.fixture
@@ -184,6 +214,146 @@ async def test_a_recovery_across_a_gap_in_attempts_is_detected(db_session):
 
     event = (await db_session.execute(select(FlakeEvent))).scalar_one()
     assert event.evidence["recoveries"] == [{"failed_attempt": 1, "recovered_attempt": 3}]
+
+
+# --------------------------------------------------------------------------- #
+# Signal B
+# --------------------------------------------------------------------------- #
+
+
+async def test_two_runs_disagreeing_on_one_commit_are_a_disagreement(db_session):
+    """A push and a pull_request run the same job on one SHA and reach opposite ends."""
+    await deliver(
+        db_session,
+        run_event(run_id=RUN_ID),
+        attempt(1, "failure", run_id=RUN_ID),
+        run_event(run_id=OTHER_RUN_ID),
+        attempt(1, "success", run_id=OTHER_RUN_ID),
+    )
+
+    event = (await db_session.execute(select(FlakeEvent))).scalar_one()
+    assert event.signal == "same_commit_disagreement"
+    assert event.job_name == JOB_NAME
+    assert event.workflow_id == WORKFLOW_ID
+    assert event.head_sha == SHA
+    # Signal B groups by commit, so it leaves Signal A's grouping column NULL.
+    assert event.run_id is None
+    assert event.evidence["runs"] == 2
+    assert {r["run_id"] for r in event.evidence["job_runs"]} == {RUN_ID, OTHER_RUN_ID}
+    assert {r["conclusion"] for r in event.evidence["job_runs"]} == {"failure", "success"}
+
+
+async def test_runs_that_agree_on_one_commit_are_not_a_disagreement(db_session):
+    await deliver(
+        db_session,
+        run_event(run_id=RUN_ID),
+        attempt(1, "success", run_id=RUN_ID),
+        run_event(run_id=OTHER_RUN_ID),
+        attempt(1, "success", run_id=OTHER_RUN_ID),
+    )
+
+    assert await flake_events(db_session) == []
+
+
+async def test_a_commit_that_only_ever_failed_is_not_a_disagreement(db_session):
+    """A job that is simply broken at this commit is not flaky."""
+    await deliver(
+        db_session,
+        run_event(run_id=RUN_ID),
+        attempt(1, "failure", run_id=RUN_ID),
+        run_event(run_id=OTHER_RUN_ID),
+        attempt(1, "failure", run_id=OTHER_RUN_ID),
+    )
+
+    assert await flake_events(db_session) == []
+
+
+async def test_the_same_job_name_in_another_workflow_is_another_group(db_session):
+    """SPEC §2: group by (workflow_id, job_name, head_sha), never by name and SHA alone."""
+    await deliver(
+        db_session,
+        run_event(run_id=RUN_ID, workflow_id=WORKFLOW_ID, workflow_name="ci"),
+        attempt(1, "failure", run_id=RUN_ID),
+        run_event(run_id=OTHER_RUN_ID, workflow_id=OTHER_WORKFLOW_ID, workflow_name="deploy"),
+        attempt(1, "success", run_id=OTHER_RUN_ID),
+    )
+
+    assert await flake_events(db_session) == []
+
+
+async def test_a_job_is_not_grouped_until_its_workflow_is_known(db_session):
+    """A `workflow_job` payload carries no workflow id, so grouping has to wait.
+
+    Skipping is the only safe answer — grouping on a NULL workflow would merge the
+    two workflows the test above keeps apart. The run event then supplies the id and
+    the jobs stored before it become groupable (D-032).
+    """
+    await deliver(
+        db_session,
+        attempt(1, "failure", run_id=RUN_ID),
+        attempt(1, "success", run_id=OTHER_RUN_ID),
+    )
+    assert await flake_events(db_session) == []
+    assert not await _job_workflow_ids(db_session)
+
+    await deliver(db_session, run_event(run_id=RUN_ID), run_event(run_id=OTHER_RUN_ID))
+
+    event = (await db_session.execute(select(FlakeEvent))).scalar_one()
+    assert event.signal == "same_commit_disagreement"
+    assert await _job_workflow_ids(db_session) == {WORKFLOW_ID}
+
+
+async def test_redelivering_a_disagreement_does_not_duplicate_the_event(db_session):
+    sequence = (
+        run_event(run_id=RUN_ID),
+        attempt(1, "failure", run_id=RUN_ID),
+        run_event(run_id=OTHER_RUN_ID),
+        attempt(1, "success", run_id=OTHER_RUN_ID),
+    )
+    await deliver(db_session, *sequence)
+    first = (await db_session.execute(select(FlakeEvent))).scalar_one()
+
+    await deliver(db_session, *sequence)
+
+    again = (await db_session.execute(select(FlakeEvent))).scalar_one()
+    assert (again.id, again.created_at) == (first.id, first.created_at)
+
+
+async def test_a_cancelled_run_cannot_create_a_disagreement(db_session):
+    """Signal B reads eligibility through the same rules Signal A does."""
+    await deliver(
+        db_session,
+        run_event(run_id=RUN_ID),
+        attempt(1, "success", run_id=RUN_ID),
+        run_event(run_id=OTHER_RUN_ID),
+        attempt(1, "cancelled", run_id=OTHER_RUN_ID),
+    )
+
+    assert await flake_events(db_session) == []
+
+
+async def test_a_rerun_recovery_is_also_a_disagreement_once_the_workflow_is_known(db_session):
+    """Both signals fire on one re-run recovery, and that is the literal spec (D-032).
+
+    SPEC §2 defines a *job run* as `(run_id, run_attempt, job_name)`, so "the set of
+    conclusions across all job runs" in a group includes separate attempts of one
+    run. The overlap is real and is left for the rollup to count, because suppressing
+    it here would mean inventing a rule the spec does not state.
+    """
+    await deliver(
+        db_session,
+        run_event(run_id=RUN_ID),
+        attempt(1, "failure"),
+        attempt(2, "success"),
+    )
+
+    assert len(await signal(db_session, "rerun_recovery")) == 1
+    assert len(await signal(db_session, "same_commit_disagreement")) == 1
+
+
+async def _job_workflow_ids(session) -> set[int]:
+    ids = (await session.execute(select(Job.workflow_id))).scalars()
+    return {i for i in ids if i is not None}
 
 
 # --------------------------------------------------------------------------- #

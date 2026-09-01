@@ -79,13 +79,15 @@ def workflow_run(
     run_attempt: int = 1,
     conclusion: str | None = "success",
     head_sha: str = SHA,
+    workflow_id: int = WORKFLOW_ID,
+    workflow_name: str = "CI",
 ) -> dict[str, Any]:
     return {
         "action": "completed",
         "workflow_run": {
             "id": run_id,
             "run_attempt": run_attempt,
-            "workflow_id": WORKFLOW_ID,
+            "workflow_id": workflow_id,
             "head_branch": "main",
             "head_sha": head_sha,
             "event": "push",
@@ -95,7 +97,11 @@ def workflow_run(
             "created_at": "2026-08-31T13:59:55Z",
             "updated_at": "2026-08-31T14:05:00Z",
         },
-        "workflow": {"id": WORKFLOW_ID, "name": "CI", "path": ".github/workflows/ci.yml"},
+        "workflow": {
+            "id": workflow_id,
+            "name": workflow_name,
+            "path": f".github/workflows/{workflow_name}.yml",
+        },
         "repository": repository(),
         "installation": {"id": INSTALLATION_ID},
     }

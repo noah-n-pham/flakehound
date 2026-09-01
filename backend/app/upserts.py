@@ -9,7 +9,7 @@ no workflow id, and must never blank one a `workflow_run` event already supplied
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -167,6 +167,53 @@ async def upsert_run(
             set_={"head_sha": stmt.excluded.head_sha, "updated_at": func.now(), **merged},
         )
     )
+
+
+async def run_workflow_id(session: AsyncSession, *, run_id: int) -> int | None:
+    """The workflow a run belongs to, taken from whichever attempt knows it.
+
+    Deliberately not scoped to one attempt: a run id determines its workflow, since
+    an attempt is a re-execution of the same run. A re-run's own `workflow_run` event
+    may not have arrived yet, and its jobs still belong to the workflow attempt 1
+    already identified.
+
+    Jobs read it from here rather than from their own payload, which carries no
+    workflow id at all. Reading it back also keeps the foreign key safe: a value
+    already stored on a run has proved that its `workflows` row exists.
+    """
+    return (
+        await session.execute(
+            select(WorkflowRun.workflow_id)
+            .where(WorkflowRun.run_id == run_id, WorkflowRun.workflow_id.is_not(None))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def propagate_workflow_id(
+    session: AsyncSession, *, run_id: int, workflow_id: int
+) -> list[str]:
+    """Fill the workflow id onto every attempt of a run, and its jobs, where unknown.
+
+    Returns the names of the jobs that changed, because Signal B cannot group a job
+    whose workflow is unknown — those are exactly the jobs now worth re-evaluating.
+    """
+    await session.execute(
+        update(WorkflowRun)
+        .where(WorkflowRun.run_id == run_id, WorkflowRun.workflow_id.is_(None))
+        .values(workflow_id=workflow_id, updated_at=func.now())
+        .execution_options(synchronize_session=False)
+    )
+    names = (
+        await session.execute(
+            update(Job)
+            .where(Job.run_id == run_id, Job.workflow_id.is_(None))
+            .values(workflow_id=workflow_id, updated_at=func.now())
+            .returning(Job.name)
+            .execution_options(synchronize_session=False)
+        )
+    ).scalars()
+    return sorted(set(names))
 
 
 async def upsert_job(

@@ -9,6 +9,8 @@ from app.logging import get_logger
 from app.queue import ClaimedJob
 from app.upserts import (
     parse_timestamp,
+    propagate_workflow_id,
+    run_workflow_id,
     upsert_installation,
     upsert_job,
     upsert_repository,
@@ -51,19 +53,26 @@ async def handle_workflow_job(session: AsyncSession, payload: dict[str, Any]) ->
 
     repo_id = await _ensure_repo(session, payload)
     head_sha = job["head_sha"]
+    run_id = job["run_id"]
+    run_attempt = job.get("run_attempt") or 1
 
     await upsert_run(
         session,
         repo_id=repo_id,
-        run_id=job["run_id"],
-        run_attempt=job.get("run_attempt") or 1,
+        run_id=run_id,
+        run_attempt=run_attempt,
         head_sha=head_sha,
         head_branch=job.get("head_branch"),
     )
-    await upsert_job(session, repo_id=repo_id, job=job, head_sha=head_sha)
-    await evaluate_job(
-        session, repo_id=repo_id, run_id=job["run_id"], job_name=job["name"]
+    await upsert_job(
+        session,
+        repo_id=repo_id,
+        job=job,
+        head_sha=head_sha,
+        # Signal B groups on the workflow, which only the run knows.
+        workflow_id=await run_workflow_id(session, run_id=run_id),
     )
+    await evaluate_job(session, repo_id=repo_id, run_id=run_id, job_name=job["name"])
 
 
 async def handle_workflow_run(session: AsyncSession, payload: dict[str, Any]) -> None:
@@ -76,11 +85,13 @@ async def handle_workflow_run(session: AsyncSession, payload: dict[str, Any]) ->
     if workflow.get("id"):
         await upsert_workflow(session, repo_id=repo_id, workflow=workflow)
 
+    run_id = run["id"]
+    run_attempt = run.get("run_attempt") or 1
     await upsert_run(
         session,
         repo_id=repo_id,
-        run_id=run["id"],
-        run_attempt=run.get("run_attempt") or 1,
+        run_id=run_id,
+        run_attempt=run_attempt,
         head_sha=run["head_sha"],
         workflow_id=run.get("workflow_id") or workflow.get("id"),
         head_branch=run.get("head_branch"),
@@ -91,6 +102,16 @@ async def handle_workflow_run(session: AsyncSession, payload: dict[str, Any]) ->
         github_created_at=parse_timestamp(run.get("created_at")),
         github_updated_at=parse_timestamp(run.get("updated_at")),
     )
+
+    # Jobs stored before this event could not know their workflow, and Signal B
+    # cannot group a job whose workflow is unknown. Filling it in is what makes
+    # those jobs groupable, so each one is re-evaluated.
+    workflow_id = await run_workflow_id(session, run_id=run_id)
+    if workflow_id is not None:
+        for job_name in await propagate_workflow_id(
+            session, run_id=run_id, workflow_id=workflow_id
+        ):
+            await evaluate_job(session, repo_id=repo_id, run_id=run_id, job_name=job_name)
 
 
 HANDLERS = {
