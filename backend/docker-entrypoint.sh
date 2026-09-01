@@ -8,6 +8,14 @@ log() {
   printf '{"event":"%s","level":"info","logger":"entrypoint","detail":"%s"}\n' "$1" "${2:-}"
 }
 
+# Without DB_HOST the settings fall back to the local compose Postgres, so a task
+# definition that forgot to inject the RDS credentials would fail against
+# localhost instead of saying what was actually wrong.
+if [[ "${APP_ENV:-local}" == "production" && -z "${DB_HOST:-}" ]]; then
+  echo '{"event":"database.host_missing","level":"error","logger":"entrypoint"}' >&2
+  exit 1
+fi
+
 # One task, so no two migrators can race here.
 log "migrate.start"
 alembic upgrade head
