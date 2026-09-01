@@ -25,22 +25,22 @@ def test_settings_default_to_local_compose_postgres():
     settings = get_settings()
     url = make_url(settings.database_url)
     assert url.drivername == "postgresql+psycopg"
-    assert url.database == "ci_insights"
+    assert url.database == "flakehound"
 
 
 def test_settings_assemble_the_url_from_the_rds_secret_parts(monkeypatch):
-    monkeypatch.setenv("DB_HOST", "ci-insights-db.c47a6ai2o1w8.us-east-1.rds.amazonaws.com")
+    monkeypatch.setenv("DB_HOST", "flakehound-db.c47a6ai2o1w8.us-east-1.rds.amazonaws.com")
     monkeypatch.setenv("DB_USER", "ciinsights")
     # RDS generates the password, so it may contain characters a URL reads as syntax.
     monkeypatch.setenv("DB_PASSWORD", "p@ss/word:1#2")
-    monkeypatch.setenv("DB_NAME", "ci_insights")
+    monkeypatch.setenv("DB_NAME", "flakehound")
 
     url = make_url(Settings().database_url)
-    assert url.host == "ci-insights-db.c47a6ai2o1w8.us-east-1.rds.amazonaws.com"
+    assert url.host == "flakehound-db.c47a6ai2o1w8.us-east-1.rds.amazonaws.com"
     assert url.port == 5432
     assert url.username == "ciinsights"
     assert url.password == "p@ss/word:1#2"
-    assert url.database == "ci_insights"
+    assert url.database == "flakehound"
 
 
 def test_settings_reject_a_db_host_without_credentials(monkeypatch):

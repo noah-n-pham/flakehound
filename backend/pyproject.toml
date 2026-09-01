@@ -1,5 +1,5 @@
 [project]
-name = "ci-insights"
+name = "flakehound"
 version = "0.1.0"
 description = "Finds flaky CI jobs from GitHub Actions history."
 requires-python = ">=3.12"

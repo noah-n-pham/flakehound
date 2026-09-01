@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="ci-insights", lifespan=lifespan)
+    app = FastAPI(title="flakehound", lifespan=lifespan)
     app.include_router(health.router)
     app.include_router(webhooks.router)
     app.include_router(api.router)

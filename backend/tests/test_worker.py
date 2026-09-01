@@ -106,7 +106,7 @@ async def test_a_workflow_job_event_produces_a_run_and_a_job(db_session):
     assert run.workflow_id is None
 
     repo = (await db_session.execute(select(Repository))).scalar_one()
-    assert repo.full_name == "khoi/ci-insights"
+    assert repo.full_name == "khoi/flakehound"
     assert repo.private is False
 
     installation = (await db_session.execute(select(Installation))).scalar_one()

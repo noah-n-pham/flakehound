@@ -29,8 +29,8 @@ async def seed_repo(session: AsyncSession) -> Repository:
         id=REPO_ID,
         installation_id=INSTALLATION_ID,
         owner="khoi",
-        name="ci-insights",
-        full_name="khoi/ci-insights",
+        name="flakehound",
+        full_name="khoi/flakehound",
         private=False,
     )
     session.add(repo)

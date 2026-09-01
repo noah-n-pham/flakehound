@@ -17,8 +17,8 @@ async def seed_jobs(session, count: int = 2) -> None:
             id=payloads.REPO_ID,
             installation_id=payloads.INSTALLATION_ID,
             owner="khoi",
-            name="ci-insights",
-            full_name="khoi/ci-insights",
+            name="flakehound",
+            full_name="khoi/flakehound",
             private=False,
         )
     )
@@ -77,7 +77,7 @@ async def test_the_repo_list_summarizes_real_rows(client, db_session):
     assert response.status_code == 200
     body = response.json()
     assert len(body) == 1
-    assert body[0]["full_name"] == "khoi/ci-insights"
+    assert body[0]["full_name"] == "khoi/flakehound"
     assert body[0]["private"] is False
     assert body[0]["job_count"] == 3
     assert body[0]["last_job_at"] is not None

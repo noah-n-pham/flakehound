@@ -1,15 +1,15 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ci-insights-postgres
+    container_name: flakehound-postgres
     environment:
       POSTGRES_USER: ci
       POSTGRES_PASSWORD: ci
-      POSTGRES_DB: ci_insights
+      POSTGRES_DB: flakehound
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ci -d ci_insights"]
+      test: ["CMD-SHELL", "pg_isready -U ci -d flakehound"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -19,7 +19,7 @@ services:
   app:
     build:
       context: ./backend
-    container_name: ci-insights-app
+    container_name: flakehound-app
     depends_on:
       postgres:
         condition: service_healthy
@@ -27,7 +27,7 @@ services:
       - .env
     environment:
       # Inside the compose network Postgres answers on its own port, not 5433.
-      DATABASE_URL: postgresql+psycopg://ci:ci@postgres:5432/ci_insights
+      DATABASE_URL: postgresql+psycopg://ci:ci@postgres:5432/flakehound
     ports:
       - "8000:8000"
 

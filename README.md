@@ -1,4 +1,4 @@
-# ci-insights
+# flakehound
 
 Finds flaky CI jobs from GitHub Actions history you already have. One-click
 install as a GitHub App — no workflow file changes, no test-suite instrumentation.
@@ -28,7 +28,7 @@ pytest
 ```
 
 Tests run against the Postgres in `docker-compose.yml` — never sqlite, never a
-mocked database. The suite creates and migrates a `ci_insights_test` database of
+mocked database. The suite creates and migrates a `flakehound_test` database of
 its own, so the development database is left alone.
 
 Migrations:

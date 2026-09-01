@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     app_env: Literal["local", "test", "production"] = "local"
     log_level: str = "info"
 
-    database_url: str = "postgresql+psycopg://ci:ci@localhost:5433/ci_insights"
+    database_url: str = "postgresql+psycopg://ci:ci@localhost:5433/flakehound"
 
     # RDS generated the master password and holds it in a secret it owns (D-018),
     # so production injects the credential's parts rather than a URL — nobody
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # these parts replace database_url.
     db_host: str | None = None
     db_port: int = 5432
-    db_name: str = "ci_insights"
+    db_name: str = "flakehound"
     db_user: str | None = None
     db_password: str | None = None
 

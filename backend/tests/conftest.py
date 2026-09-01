@@ -80,5 +80,5 @@ async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
 
     app.dependency_overrides[session_scope] = _session_override
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://ci-insights.test") as http_client:
+    async with AsyncClient(transport=transport, base_url="http://flakehound.test") as http_client:
         yield http_client

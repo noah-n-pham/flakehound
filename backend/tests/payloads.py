@@ -18,8 +18,8 @@ SHA = "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c"
 def repository(private: bool = False) -> dict[str, Any]:
     return {
         "id": REPO_ID,
-        "name": "ci-insights",
-        "full_name": "khoi/ci-insights",
+        "name": "flakehound",
+        "full_name": "khoi/flakehound",
         "private": private,
         "default_branch": "main",
         "owner": {"id": 41_000_000, "login": "khoi", "type": "User"},
