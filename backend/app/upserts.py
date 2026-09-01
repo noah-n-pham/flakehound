@@ -9,11 +9,62 @@ no workflow id, and must never blank one a `workflow_run` event already supplied
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Installation, Job, Repository, Workflow, WorkflowRun
+
+
+def _status_rank(column: Any) -> Any:
+    """How far along an execution a payload claims to be.
+
+    GitHub sends three deliveries per job and per run — queued, in progress, completed —
+    and nothing guarantees they are *processed* in that order. `claim_batch` orders which
+    rows it claims but `RETURNING` gives no ordering guarantee within a batch, and the
+    reaper can re-run one message beside another. So a payload's own status is the only
+    reliable statement of how much it knows.
+    """
+    return case((column == "completed", 3), (column == "in_progress", 2), else_=1)
+
+
+def _never_regress(
+    excluded: Any,
+    table: Any,
+    progress_columns: tuple[str, ...],
+    *,
+    always_merge: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Merge a payload only when it is at least as advanced as the row already stored.
+
+    A payload that is *behind* what we have contributes nothing: an `in_progress` body
+    carries a null conclusion and a partial step count, and applying it after the
+    `completed` body would erase a terminal fact. That is not a hypothetical — it
+    happened in production and turned a successful job run into one with no conclusion,
+    which silently removed it from Signal A's opportunities (turn 19).
+
+    `always_merge` columns are exempt because they carry identity rather than progress:
+    a workflow id is equally true in every delivery, and whichever one supplies it first
+    is right.
+    """
+    advanced = _status_rank(excluded.status) >= _status_rank(table.status)
+    merged: dict[str, Any] = {
+        column: case(
+            (advanced, func.coalesce(excluded[column], getattr(table, column))),
+            else_=getattr(table, column),
+        )
+        for column in progress_columns
+    }
+    # Status itself advances rather than merges: it is never null, so COALESCE would
+    # freeze it at whichever delivery landed first.
+    merged["status"] = case((advanced, excluded.status), else_=table.status)
+    merged.update(
+        {
+            column: func.coalesce(excluded[column], getattr(table, column))
+            for column in always_merge
+        }
+    )
+    return merged
 
 
 def parse_timestamp(value: Any) -> datetime | None:
@@ -148,19 +199,19 @@ async def upsert_run(
         github_created_at=github_created_at,
         github_updated_at=github_updated_at,
     )
-    merged = {
-        column: func.coalesce(stmt.excluded[column], getattr(WorkflowRun, column))
-        for column in (
-            "workflow_id",
+    merged = _never_regress(
+        stmt.excluded,
+        WorkflowRun,
+        (
             "head_branch",
             "event",
-            "status",
             "conclusion",
             "run_started_at",
             "github_created_at",
             "github_updated_at",
-        )
-    }
+        ),
+        always_merge=("workflow_id",),
+    )
     await session.execute(
         stmt.on_conflict_do_update(
             index_elements=[WorkflowRun.run_id, WorkflowRun.run_attempt],
@@ -248,22 +299,23 @@ async def upsert_job(
             sum(1 for s in steps if s.get("status") == "completed") if steps else None
         ),
     )
+    merged = _never_regress(
+        stmt.excluded,
+        Job,
+        (
+            "conclusion",
+            "started_at",
+            "completed_at",
+            "runner_name",
+            "runner_labels",
+            "step_count",
+            "completed_step_count",
+        ),
+        always_merge=("workflow_id",),
+    )
     await session.execute(
         stmt.on_conflict_do_update(
             index_elements=[Job.id],
-            set_={
-                "status": stmt.excluded.status,
-                "conclusion": stmt.excluded.conclusion,
-                "started_at": func.coalesce(stmt.excluded.started_at, Job.started_at),
-                "completed_at": func.coalesce(stmt.excluded.completed_at, Job.completed_at),
-                "runner_name": func.coalesce(stmt.excluded.runner_name, Job.runner_name),
-                "runner_labels": func.coalesce(stmt.excluded.runner_labels, Job.runner_labels),
-                "step_count": func.coalesce(stmt.excluded.step_count, Job.step_count),
-                "completed_step_count": func.coalesce(
-                    stmt.excluded.completed_step_count, Job.completed_step_count
-                ),
-                "workflow_id": func.coalesce(stmt.excluded.workflow_id, Job.workflow_id),
-                "updated_at": func.now(),
-            },
+            set_={"updated_at": func.now(), **merged},
         )
     )

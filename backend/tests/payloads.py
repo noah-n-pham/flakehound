@@ -81,9 +81,12 @@ def workflow_run(
     head_sha: str = SHA,
     workflow_id: int = WORKFLOW_ID,
     workflow_name: str = "CI",
+    status: str = "completed",
 ) -> dict[str, Any]:
+    """One push produces three of these: requested, in progress, and completed."""
+    action = {"queued": "requested", "in_progress": "in_progress"}.get(status, "completed")
     return {
-        "action": "completed",
+        "action": action,
         "workflow_run": {
             "id": run_id,
             "run_attempt": run_attempt,
@@ -91,7 +94,7 @@ def workflow_run(
             "head_branch": "main",
             "head_sha": head_sha,
             "event": "push",
-            "status": "completed",
+            "status": status,
             "conclusion": conclusion,
             "run_started_at": "2026-08-31T14:00:00Z",
             "created_at": "2026-08-31T13:59:55Z",
