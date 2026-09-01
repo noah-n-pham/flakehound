@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # Statements slower than this are logged by the worker's slow-query hook (SPEC §9).
     slow_query_ms: int = 500
 
+    # The two config flags SPEC §2's edge-case table asks for, at its defaults. A
+    # timed-out job counts as an eligible failure; a job that completed none of its
+    # steps is a dead runner rather than a flaky test and is not an opportunity.
+    timed_out_is_failure: bool = True
+    exclude_infra_failures: bool = True
+
     worker_batch_size: int = 10
     worker_poll_seconds: float = 1.0
 

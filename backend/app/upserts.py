@@ -195,7 +195,11 @@ async def upsert_job(
         runner_name=job.get("runner_name"),
         runner_labels=list(labels) if isinstance(labels, list) else None,
         step_count=len(steps) if steps else None,
-        completed_step_count=sum(1 for s in steps if s.get("status") == "completed") or None,
+        # Zero must be stored as zero, not as "unknown": steps planned and none
+        # finished is how a dead runner is told from a test failure (SPEC §2).
+        completed_step_count=(
+            sum(1 for s in steps if s.get("status") == "completed") if steps else None
+        ),
     )
     await session.execute(
         stmt.on_conflict_do_update(

@@ -8,14 +8,8 @@ from app.models import EventQueue, Installation, Job, Repository, WorkflowRun
 from app.queue import claim_batch, mark_done, mark_for_retry
 from app.worker import run_once
 from tests import payloads
-
-
-def enqueue(session, payload, *, event="workflow_job", priority=0, attempts=0) -> EventQueue:
-    row = EventQueue(
-        job_type="webhook", event=event, payload=payload, priority=priority, attempts=attempts
-    )
-    session.add(row)
-    return row
+from tests.helpers import enqueue
+from tests.helpers import one_session_factory as _one_session_factory
 
 
 async def test_claiming_marks_rows_processing_and_counts_the_attempt(db_session):
@@ -180,19 +174,3 @@ async def test_marking_done_and_marking_for_retry(db_session):
     await db_session.refresh(row)
     assert row.status == "done"
     assert row.locked_at is None
-
-
-def _one_session_factory(session):
-    """Hand the worker the test's own session, so its commits still roll back."""
-
-    class _Scope:
-        async def __aenter__(self):
-            return session
-
-        async def __aexit__(self, *exc_info):
-            return False
-
-    def factory():
-        return _Scope()
-
-    return factory

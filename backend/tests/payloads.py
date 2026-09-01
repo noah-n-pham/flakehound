@@ -36,7 +36,19 @@ def workflow_job(
     status: str = "completed",
     head_sha: str = SHA,
     completed_steps: int = 3,
+    total_steps: int | None = None,
 ) -> dict[str, Any]:
+    """`total_steps` above `completed_steps` is how a dead runner looks: steps were
+    planned and some never started."""
+    planned = completed_steps if total_steps is None else total_steps
+    steps = [
+        {
+            "name": f"step {i}",
+            "status": "completed" if i < completed_steps else "queued",
+            "conclusion": "success" if i < completed_steps else None,
+        }
+        for i in range(planned)
+    ]
     return {
         "action": status,
         "workflow_job": {
@@ -53,10 +65,7 @@ def workflow_job(
             "completed_at": "2026-08-31T14:04:12Z",
             "runner_name": "GitHub Actions 2",
             "labels": ["ubuntu-latest"],
-            "steps": [
-                {"name": f"step {i}", "status": "completed", "conclusion": "success"}
-                for i in range(completed_steps)
-            ],
+            "steps": steps,
         },
         "repository": repository(),
         "installation": {"id": INSTALLATION_ID},

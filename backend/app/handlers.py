@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.detection import evaluate_job
 from app.logging import get_logger
 from app.queue import ClaimedJob
 from app.upserts import (
@@ -60,6 +61,9 @@ async def handle_workflow_job(session: AsyncSession, payload: dict[str, Any]) ->
         head_branch=job.get("head_branch"),
     )
     await upsert_job(session, repo_id=repo_id, job=job, head_sha=head_sha)
+    await evaluate_job(
+        session, repo_id=repo_id, run_id=job["run_id"], job_name=job["name"]
+    )
 
 
 async def handle_workflow_run(session: AsyncSession, payload: dict[str, Any]) -> None:
