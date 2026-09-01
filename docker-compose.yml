@@ -16,5 +16,20 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  app:
+    build:
+      context: ./backend
+    container_name: ci-insights-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network Postgres answers on its own port, not 5433.
+      DATABASE_URL: postgresql+psycopg://ci:ci@postgres:5432/ci_insights
+    ports:
+      - "8000:8000"
+
 volumes:
   pgdata:

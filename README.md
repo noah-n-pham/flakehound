@@ -36,3 +36,17 @@ Migrations:
 ```bash
 cd backend && alembic upgrade head
 ```
+
+## The container
+
+One image runs all three processes — the API, the worker, and `cloudflared` —
+under a shell entrypoint that migrates first and exits if any of them dies.
+
+```bash
+docker compose up -d --build
+curl localhost:8000/healthz
+```
+
+The tunnel starts only when `TUNNEL_TOKEN` is set. Outside production it is
+skipped, since you reach the API on localhost; with `APP_ENV=production` and no
+token the container exits rather than come up with no way in.
