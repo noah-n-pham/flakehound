@@ -10,8 +10,12 @@ of reading the Actions API instead of asking you to upload JUnit XML.
 
 ```
 backend/    FastAPI service, worker, and Alembic migrations
+frontend/   Next.js dashboard, deployed on Vercel
 docker-compose.yml   Postgres for local development and tests
 ```
+
+The browser never talks to FastAPI. Next.js is the backend-for-frontend: it holds
+the internal bearer token server-side and is the only client of `/api/*`.
 
 ## Local development
 
@@ -50,3 +54,18 @@ curl localhost:8000/healthz
 The tunnel starts only when `TUNNEL_TOKEN` is set. Outside production it is
 skipped, since you reach the API on localhost; with `APP_ENV=production` and no
 token the container exits rather than come up with no way in.
+
+## The dashboard
+
+Requires Node 20+.
+
+```bash
+cd frontend
+npm install
+npm run dev:local     # reads ../.env, so the internal token lives in one file
+```
+
+`dev:local` points the BFF at whatever `API_BASE_URL` says — the deployed API by
+default, so the page shows production data without running anything locally.
+`/styleguide` renders every primitive in `docs/DESIGN.md` that the app uses; add a
+component there before using it anywhere else.
