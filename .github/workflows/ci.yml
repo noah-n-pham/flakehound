@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # A matrix of one, named so the job title carries its matrix value the way a real
+  # one does. Signal B groups by job name, and names are stored whole.
+  test:
+    name: test (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12"]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: flakehound
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d flakehound"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      # Real Postgres, never sqlite. The suite appends _test and migrates its own copy.
+      DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/flakehound
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - run: pip install -e '.[dev]'
+
+      - run: ruff check .
+
+      - run: pytest -q
