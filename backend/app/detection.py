@@ -11,17 +11,19 @@ request on the same SHA, or a manual re-dispatch — rather than between attempt
 A SHA is content-addressed, so a force-push cannot corrupt the grouping: identical
 SHA means identical tree.
 
-The eligibility rules from that section's edge-case table live in `job_outcome`,
-because a signal reasons over *opportunities* rather than over raw conclusions. A
-cancelled or skipped job says nothing about flakiness, and neither does a runner
-that died before completing a single step.
+The eligibility rules from that section's edge-case table live in
+`opportunity_filter`, because a signal reasons over *opportunities* rather than over
+raw conclusions. A cancelled or skipped job says nothing about flakiness, and neither
+does a runner that died before completing a single step. That filter is SQL rather
+than Python on purpose: the leaderboard's denominator counts the same opportunities
+without loading them, and two definitions of the word would eventually disagree.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, and_, case, func, not_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,74 +53,72 @@ class Opportunity:
     completed_at: datetime | None
 
 
-def job_outcome(
-    conclusion: str | None,
-    *,
-    step_count: int | None = None,
-    completed_step_count: int | None = None,
-) -> str | None:
-    """Reduce GitHub's conclusion to `success`, `failure`, or not-an-opportunity.
+def opportunity_filter() -> ColumnElement[bool]:
+    """SPEC §2's *opportunity*, as SQL over the jobs table.
 
-    Every branch here is a row of SPEC §2's edge-case table:
+    Every clause is a row of that section's edge-case table:
 
-    * `cancelled`, `skipped`, and the advisory conclusions — excluded;
-    * `null` — still running, excluded until the completion event re-evaluates it;
-    * `timed_out` — a config flag, treated as an eligible failure by default;
-    * zero completed steps out of a known number of them is a dead runner rather
-      than a flaky test, and is excluded by default under its own flag.
+    * `cancelled`, `skipped`, `null` (still running), and the advisory conclusions
+      are simply not in the eligible set — a non-terminal job is re-evaluated when
+      its completion event arrives;
+    * `timed_out` is a config flag, eligible and counted as a failure by default;
+    * a failure that completed none of its planned steps is a dead runner rather than
+      a flaky test, and is excluded by default under its own flag. Excluding it only
+      in the failure branch matters: a success is never infrastructure noise, and an
+      unrecorded step count is not evidence of anything.
+
+    This is the single definition of the word. Both signals select through it and the
+    leaderboard counts through it, so the numerator and the denominator of the flake
+    rate can never drift apart.
     """
     settings = get_settings()
-    if conclusion == SUCCESS:
-        return SUCCESS
-    if conclusion == FAILURE or (conclusion == "timed_out" and settings.timed_out_is_failure):
-        if settings.exclude_infra_failures and _is_infra_failure(step_count, completed_step_count):
-            return None
-        return FAILURE
-    return None
+    eligible = [SUCCESS, FAILURE]
+    if settings.timed_out_is_failure:
+        eligible.append("timed_out")
+
+    filters = [Job.conclusion.in_(eligible)]
+    if settings.exclude_infra_failures:
+        filters.append(
+            not_(
+                and_(
+                    Job.conclusion != SUCCESS,
+                    Job.step_count.is_not(None),
+                    Job.completed_step_count == 0,
+                )
+            )
+        )
+    return and_(*filters)
 
 
-def _is_infra_failure(step_count: int | None, completed_step_count: int | None) -> bool:
-    """The runner died: steps were planned and none of them finished.
+def outcome_expression() -> ColumnElement[str]:
+    """An eligible job's outcome: `success`, or `failure` for everything else.
 
-    An unrecorded count is not evidence of anything, so it is not an infra failure.
+    Only meaningful alongside `opportunity_filter`, which is what guarantees "everything
+    else" is a real failure rather than a cancellation.
     """
-    return step_count is not None and completed_step_count == 0
+    return case((Job.conclusion == SUCCESS, SUCCESS), else_=FAILURE)
 
 
 async def _opportunities(
     session: AsyncSession, *where: ColumnElement[bool]
 ) -> list[Opportunity]:
-    """The eligible job runs matching `where`, in (run, attempt) order.
-
-    Both signals come through here, so SPEC §2's eligibility table is enforced in
-    one place rather than once per signal.
-    """
+    """The eligible job runs matching `where`, in (run, attempt) order."""
     rows = (
         await session.execute(
             select(
                 Job.id,
                 Job.run_id,
                 Job.run_attempt,
-                Job.conclusion,
+                outcome_expression(),
                 Job.workflow_id,
                 Job.head_sha,
                 Job.completed_at,
-                Job.step_count,
-                Job.completed_step_count,
             )
-            .where(*where)
+            .where(*where, opportunity_filter())
             .order_by(Job.run_id, Job.run_attempt)
         )
     ).all()
-
-    found: list[Opportunity] = []
-    for job_id, run, attempt, conclusion, workflow, sha, completed_at, steps, done_steps in rows:
-        outcome = job_outcome(conclusion, step_count=steps, completed_step_count=done_steps)
-        if outcome is not None:
-            found.append(
-                Opportunity(job_id, run, attempt, outcome, workflow, sha, completed_at)
-            )
-    return found
+    return [Opportunity(*row) for row in rows]
 
 
 async def opportunities_in_run(
@@ -188,6 +188,10 @@ async def evaluate_rerun_recovery(
     latest = recoveries[-1][1]
     evidence = {
         "head_sha": latest.head_sha,
+        # Only the runs that form a recovery pair. A first failure that was followed by
+        # another failure satisfies nothing on its own, so it is context in `attempts`
+        # rather than a flake event in its own right.
+        "job_ids": sorted({run.job_id for pair in recoveries for run in pair}),
         "attempts": [
             {"run_attempt": a.run_attempt, "job_id": a.job_id, "conclusion": a.outcome}
             for a in attempts
@@ -242,6 +246,7 @@ async def evaluate_same_commit_disagreement(
         return False
 
     evidence = {
+        "job_ids": sorted(run.job_id for run in runs),
         "job_runs": [
             {
                 "run_id": run.run_id,
@@ -293,6 +298,10 @@ async def record_flake_event(
     is only a unique key because the constraint is declared NULLS NOT DISTINCT.
     Re-evaluating history therefore refreshes the evidence instead of duplicating
     the event.
+
+    Every caller's `evidence` carries a flat `job_ids` list beside its per-signal
+    detail. One row here stands for a whole group, so that list is how the flake rate
+    recovers the individual job runs the signal implicated — see `app/stats.py`.
     """
     stmt = insert(FlakeEvent).values(
         repo_id=repo_id,
