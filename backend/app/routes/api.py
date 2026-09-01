@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import require_internal_token
 from app.db import session_scope
 from app.models import Job, Repository
+from app.stats import flaky_jobs
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_internal_token)])
 
@@ -37,6 +38,28 @@ class JobRow(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     duration_seconds: float | None
+
+
+class FlakyJob(BaseModel):
+    """One leaderboard row. All three statistics are null at zero opportunities."""
+
+    workflow_id: int | None
+    job_name: str
+    opportunities: int
+    failures: int
+    flakes: int
+    last_flake_at: datetime | None
+    flake_rate: float | None
+    wilson_lower: float | None
+    wilson_upper: float | None
+
+
+async def _require_repo(session: AsyncSession, repo_id: int) -> None:
+    exists = (
+        await session.execute(select(Repository.id).where(Repository.id == repo_id))
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown repo")
 
 
 @router.get("/repos")
@@ -71,11 +94,7 @@ async def list_jobs(
     rather than an aggregate — SPEC §8's rollup rule applies to the leaderboard
     and minutes endpoints that Section E adds.
     """
-    exists = (
-        await session.execute(select(Repository.id).where(Repository.id == repo_id))
-    ).scalar_one_or_none()
-    if exists is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown repo")
+    await _require_repo(session, repo_id)
 
     jobs = (
         (
@@ -107,4 +126,36 @@ async def list_jobs(
             ),
         )
         for job in jobs
+    ]
+
+
+@router.get("/repos/{repo_id}/flaky")
+async def list_flaky_jobs(
+    session: SessionDep,
+    repo_id: Annotated[int, Path(description="GitHub's repo id")],
+    window_days: Annotated[int, Query(ge=1, le=365)] = 30,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[FlakyJob]:
+    """The flake leaderboard for one repo, ranked by the Wilson interval's lower bound.
+
+    Both bounds and the point estimate are returned rather than the rank key alone,
+    because the interval's width is what tells a reader how much to trust the rate —
+    a job seen three times is not the same claim as a job seen three hundred.
+    """
+    await _require_repo(session, repo_id)
+
+    board = await flaky_jobs(session, repo_id=repo_id, window_days=window_days, limit=limit)
+    return [
+        FlakyJob(
+            workflow_id=job.workflow_id,
+            job_name=job.job_name,
+            opportunities=job.opportunities,
+            failures=job.failures,
+            flakes=job.flakes,
+            last_flake_at=job.last_flake_at,
+            flake_rate=job.interval.rate if job.interval else None,
+            wilson_lower=job.interval.lower if job.interval else None,
+            wilson_upper=job.interval.upper if job.interval else None,
+        )
+        for job in board
     ]

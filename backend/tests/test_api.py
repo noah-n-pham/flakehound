@@ -4,6 +4,8 @@ from app.config import get_settings
 from app.models import Installation, Job, Repository, WorkflowRun
 from app.upserts import parse_timestamp
 from tests import payloads
+from tests.helpers import deliver
+from tests.test_detection import RUN_ID, WORKFLOW_ID, attempt, run_event
 
 
 def auth() -> dict[str, str]:
@@ -120,3 +122,84 @@ async def test_an_unknown_repo_is_a_404_not_an_empty_list(client, db_session):
 
 async def test_healthz_stays_unauthenticated(client):
     assert (await client.get("/healthz")).status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# The flake leaderboard
+# --------------------------------------------------------------------------- #
+
+
+async def seed_a_flaky_and_a_clean_job(session) -> None:
+    """Real deliveries through the worker, so the rows are the ones detection wrote."""
+    await deliver(
+        session,
+        run_event(run_id=RUN_ID),
+        attempt(1, "failure", name="flaky leg"),
+        attempt(2, "success", name="flaky leg"),
+        attempt(1, "success", name="stable leg"),
+        attempt(2, "success", name="stable leg"),
+    )
+
+
+async def test_the_flaky_endpoint_needs_the_token(client):
+    response = await client.get(f"/api/repos/{payloads.REPO_ID}/flaky")
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+async def test_an_unknown_repo_is_a_404_on_the_flaky_endpoint(client, db_session):
+    await seed_jobs(db_session)
+
+    response = await client.get("/api/repos/1234567/flaky", headers=auth())
+
+    assert response.status_code == 404
+
+
+async def test_the_flaky_endpoint_ranks_by_the_wilson_lower_bound(client, db_session):
+    await seed_a_flaky_and_a_clean_job(db_session)
+
+    response = await client.get(f"/api/repos/{payloads.REPO_ID}/flaky", headers=auth())
+
+    assert response.status_code == 200
+    board = response.json()
+    assert [row["job_name"] for row in board] == ["flaky leg", "stable leg"]
+
+    flaky = board[0]
+    assert (flaky["opportunities"], flaky["failures"], flaky["flakes"]) == (2, 1, 2)
+    assert flaky["flake_rate"] == 1.0
+    assert flaky["wilson_upper"] == 1.0
+    assert 0 < flaky["wilson_lower"] < 1
+    assert flaky["last_flake_at"] is not None
+    assert flaky["workflow_id"] == WORKFLOW_ID
+
+    clean = board[1]
+    assert clean["flakes"] == 0
+    assert clean["flake_rate"] == 0.0
+    assert clean["wilson_lower"] == 0.0
+    # Two clean runs are not proof of a clean job, and the upper bound says so.
+    assert clean["wilson_upper"] > 0.5
+    assert clean["last_flake_at"] is None
+    assert flaky["wilson_lower"] > clean["wilson_lower"]
+
+
+async def test_the_flaky_endpoint_honours_its_window(client, db_session):
+    await seed_a_flaky_and_a_clean_job(db_session)
+
+    response = await client.get(
+        f"/api/repos/{payloads.REPO_ID}/flaky", params={"window_days": 1}, headers=auth()
+    )
+
+    assert response.status_code == 200
+    # The fixtures completed on 2026-08-31, so a one-day window holds nothing.
+    assert response.json() == []
+
+
+async def test_the_flaky_endpoint_rejects_a_nonsense_window(client, db_session):
+    await seed_jobs(db_session)
+
+    response = await client.get(
+        f"/api/repos/{payloads.REPO_ID}/flaky", params={"window_days": 0}, headers=auth()
+    )
+
+    assert response.status_code == 422

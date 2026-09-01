@@ -151,12 +151,14 @@ export default async function ReportPage() {
       <section className="mt-24">
         <SectionLabel>what this does not show yet</SectionLabel>
         <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
-          Detection is not wired in. These are raw job executions, not flake
-          events, so a job that failed and then passed on a re-run is listed
-          twice here and called flaky nowhere. Re-run recovery, same-commit
-          disagreement, and the Wilson-ranked leaderboard come next. Job names
-          are stored whole, matrix values included, because different matrix legs
-          are different jobs.
+          Detection runs in the worker now — re-run recovery, same-commit
+          disagreement, and a leaderboard ranked by the lower bound of the Wilson
+          interval — but this page has not been rebuilt around it. These are
+          still raw job executions, so a job that failed and then passed on a
+          re-run is listed twice here and called flaky nowhere. The history above
+          also predates detection, so no flake events have been derived from it
+          yet. Job names are stored whole, matrix values included, because
+          different matrix legs are different jobs.
         </p>
       </section>
     </main>
