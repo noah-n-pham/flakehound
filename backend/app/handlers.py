@@ -5,6 +5,12 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.backfill import (
+    JOBS_JOB_TYPE,
+    RUNS_JOB_TYPE,
+    handle_backfill_jobs,
+    handle_backfill_runs,
+)
 from app.detection import evaluate_job
 from app.logging import get_logger
 from app.queue import ClaimedJob
@@ -227,8 +233,21 @@ HANDLERS = {
     "installation_repositories": handle_installation_repositories,
 }
 
+# Backfill rows carry no GitHub event — nothing was delivered to us — so they are
+# dispatched on `job_type` instead. `webhook` and `reevaluate` both fall through
+# to the event table below.
+JOB_TYPE_HANDLERS = {
+    RUNS_JOB_TYPE: handle_backfill_runs,
+    JOBS_JOB_TYPE: handle_backfill_jobs,
+}
+
 
 async def handle(session: AsyncSession, claimed: ClaimedJob) -> None:
+    by_job_type = JOB_TYPE_HANDLERS.get(claimed.job_type)
+    if by_job_type is not None:
+        await by_job_type(session, claimed.payload)
+        return
+
     handler = HANDLERS.get(claimed.event or "")
     if handler is None:
         log.info("worker.event_ignored", queue_id=claimed.id, github_event=claimed.event)

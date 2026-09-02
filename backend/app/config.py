@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     worker_batch_size: int = 10
     worker_poll_seconds: float = 1.0
 
+    # Backfill (SPEC §7). The runs listing caps near 1000 results however you
+    # page it, so history is walked in `created` windows rather than by page
+    # alone, and a window that overflows the cap is halved until it fits.
+    backfill_days: int = 90
+    backfill_window_days: int = 7
+    backfill_page_size: int = 100
+    backfill_result_cap: int = 1000
+
     # Retry (SPEC §5). The delay before attempt n is base * 2^(n-1), capped, so
     # the five attempts of the default ceiling span minutes rather than one
     # second — long enough to outlive a Postgres failover or a GitHub blip.
