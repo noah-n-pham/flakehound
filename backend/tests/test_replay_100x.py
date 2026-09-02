@@ -52,12 +52,20 @@ STATE_TABLES = (
 )
 
 
-async def snapshot(session) -> dict[str, list[tuple]]:
-    """Every fact and derived row, minus the columns a replay is allowed to move."""
+async def snapshot(
+    session, *, also_exclude: frozenset[str] = frozenset()
+) -> dict[str, list[tuple]]:
+    """Every fact and derived row, minus the columns a replay is allowed to move.
+
+    `also_exclude` exists for the backfill's resume test, which compares two
+    separate crawls rather than two replays and so has one more receipt to drop.
+    Nothing else may use it: every exclusion is a place a bug can hide.
+    """
     state = {}
+    excluded = RECEIPT_COLUMNS | also_exclude
     for model in STATE_TABLES:
         table = model.__table__
-        columns = [c for c in table.columns if c.name not in RECEIPT_COLUMNS]
+        columns = [c for c in table.columns if c.name not in excluded]
         rows = (
             await session.execute(select(*columns).order_by(*table.primary_key.columns))
         ).all()
