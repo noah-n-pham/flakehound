@@ -60,8 +60,15 @@ class Settings(BaseSettings):
     # second — long enough to outlive a Postgres failover or a GitHub blip.
     retry_backoff_seconds: float = 5.0
     retry_backoff_max_seconds: float = 300.0
-    # How often the worker sweeps for rows that are out of attempts.
+    # How often the worker reaps stuck rows and fails spent ones.
     queue_sweep_seconds: float = 60.0
+    # A row claimed for longer than this is assumed to belong to a dead worker.
+    # **It must exceed maximum processing time**, or the reaper hands a second
+    # worker a row the first is still holding. A live handler is a handful of
+    # upserts and one detection query — single-digit milliseconds — so five
+    # minutes is three orders of magnitude of headroom. Section D's backfill
+    # makes one row an HTTP crawl; revisit the number then, with a measurement.
+    reaper_timeout_seconds: float = 300.0
 
     @model_validator(mode="after")
     def _assemble_database_url(self) -> "Settings":

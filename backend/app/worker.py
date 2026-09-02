@@ -9,6 +9,7 @@ redelivery storm.
 import asyncio
 import signal
 import time
+from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -16,7 +17,7 @@ from app.config import get_settings
 from app.db import dispose_engine, get_sessionmaker
 from app.handlers import handle
 from app.logging import configure_logging, get_logger
-from app.queue import claim_batch, fail_exhausted, mark_done, mark_for_retry
+from app.queue import claim_batch, fail_exhausted, mark_done, mark_for_retry, reap_stuck
 
 log = get_logger(__name__)
 
@@ -58,14 +59,29 @@ async def run_once(sessionmaker: async_sessionmaker, batch_size: int) -> int:
     return len(claimed)
 
 
-async def sweep(sessionmaker: async_sessionmaker) -> list[int]:
-    """Mark rows that are out of attempts `failed`, so they stop being invisible."""
+@dataclass(frozen=True)
+class SweepResult:
+    reaped: list[int]
+    failed: list[int]
+
+
+async def sweep(sessionmaker: async_sessionmaker) -> SweepResult:
+    """Recover abandoned rows, then fail the ones that are out of attempts.
+
+    In that order, and in one transaction: reaping returns a row to pending with
+    its spent attempt still counted, so a row whose last attempt died with its
+    worker is dead-lettered by the same pass instead of waiting out another
+    interval as work that looks pending but can never be claimed.
+    """
     async with sessionmaker() as session:
+        reaped = await reap_stuck(session)
         spent = await fail_exhausted(session)
         await session.commit()
+    if reaped:
+        log.warning("worker.reaped_stuck", queue_ids=reaped, count=len(reaped))
     if spent:
         log.warning("worker.swept_exhausted", queue_ids=spent, count=len(spent))
-    return spent
+    return SweepResult(reaped=reaped, failed=spent)
 
 
 async def run_forever(stop: asyncio.Event | None = None) -> None:
@@ -76,6 +92,8 @@ async def run_forever(stop: asyncio.Event | None = None) -> None:
         "worker.started",
         batch_size=settings.worker_batch_size,
         poll_seconds=settings.worker_poll_seconds,
+        sweep_seconds=settings.queue_sweep_seconds,
+        reaper_timeout_seconds=settings.reaper_timeout_seconds,
     )
 
     last_sweep = float("-inf")

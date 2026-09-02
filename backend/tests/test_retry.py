@@ -145,5 +145,5 @@ async def test_the_worker_sweeps(db_session):
     spent = enqueue(db_session, POISON, attempts=5, max_attempts=5)
     await db_session.flush()
 
-    assert await sweep(_one_session_factory(db_session)) == [spent.id]
+    assert (await sweep(_one_session_factory(db_session))).failed == [spent.id]
     assert (await _row(db_session)).status == "failed"

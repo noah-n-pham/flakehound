@@ -125,6 +125,40 @@ async def mark_for_retry(session: AsyncSession, job: ClaimedJob, error: str) -> 
     return job.exhausted
 
 
+async def reap_stuck(session: AsyncSession) -> list[int]:
+    """Return rows claimed longer than the timeout to pending (SPEC §5).
+
+    A worker killed mid-message leaves its row `processing` forever: the claim
+    commits before the work starts, precisely so the row is visible as taken,
+    which means nothing releases it when the process dies.
+
+    **The timeout must exceed maximum processing time.** Below it the reaper hands
+    a second worker a row the first one is still working on, which is not a
+    deadlock but duplicated work — survivable only because every handler is
+    idempotent, and not something to rely on. The attempt already spent is not
+    given back, so a row that reliably kills its worker exhausts its ceiling and
+    is dead-lettered rather than being reaped forever.
+    """
+    timeout = timedelta(seconds=get_settings().reaper_timeout_seconds)
+    stuck = (
+        update(EventQueue)
+        .where(
+            EventQueue.status == "processing",
+            EventQueue.locked_at < func.now() - literal(timeout, Interval()),
+        )
+        .values(
+            status="pending",
+            locked_at=None,
+            next_attempt_at=None,
+            last_error="reaped: claimed longer than the reaper timeout",
+            updated_at=func.now(),
+        )
+        .returning(EventQueue.id)
+        .execution_options(synchronize_session=False)
+    )
+    return list((await session.execute(stuck)).scalars())
+
+
 async def fail_exhausted(session: AsyncSession) -> list[int]:
     """The sweep SPEC §5 asks for: mark spent rows failed so they are visible.
 
