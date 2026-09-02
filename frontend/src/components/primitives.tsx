@@ -86,6 +86,47 @@ export function Body({
 }
 
 /**
+ * The content column. 680px, or 960px when a data table needs the room — those are
+ * the only two widths DESIGN.md allows, which is why this takes a boolean and not a
+ * width.
+ */
+export function Page({
+  wide = false,
+  children,
+}: {
+  wide?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <main
+      className={clsx(
+        "mx-auto px-6 py-24",
+        wide ? "max-w-[960px]" : "max-w-[680px]",
+      )}
+    >
+      {children}
+    </main>
+  );
+}
+
+/**
+ * The dot-separated mono line from the bottom of `docs/design-refs/02-report.png`:
+ * facts about how a number was produced, small and faint enough to ignore.
+ */
+export function MetaStrip({ items }: { items: ReactNode[] }) {
+  return (
+    <p className="font-mono text-[11px] leading-[1.8] text-text-faint">
+      {items.map((item, index) => (
+        <span key={index}>
+          {index > 0 ? <span className="px-2">·</span> : null}
+          {item}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/**
  * A major page section: 96px of rhythm above it, an uppercase mono label, 32px
  * between label and content. Every page was hand-rolling that triple and
  * `/styleguide` kept a private copy of it — drift in the file whose job is to
@@ -204,6 +245,7 @@ export function Button({
   disabled = false,
   type = "button",
   size = "default",
+  onClick,
 }: {
   children: ReactNode;
   variant?: "primary" | "secondary";
@@ -212,11 +254,18 @@ export function Button({
   type?: "button" | "submit";
   /** `compact` fits the 56px nav bar; everything else uses the default. */
   size?: "default" | "compact";
+  /**
+   * Only passable from a client component, which in this app means the error
+   * boundary's retry and nothing else — every other action is a server action in a
+   * form. `/styleguide` therefore shows this button without a handler.
+   */
+  onClick?: () => void;
 }) {
   return (
     <button
       type={type}
       disabled={disabled}
+      onClick={onClick}
       className={clsx(
         "rounded-[2px] transition-opacity duration-150",
         size === "compact" ? "px-3 py-1.5 text-[12px]" : "px-4 py-2 text-[13px]",

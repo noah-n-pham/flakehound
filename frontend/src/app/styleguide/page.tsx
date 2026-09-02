@@ -4,6 +4,8 @@ import {
   Heading,
   InlineLink,
   LabelValueRow,
+  MetaStrip,
+  Page,
   Rule,
   Section,
   SectionLabel,
@@ -18,7 +20,7 @@ import {
  * component cannot exist in two versions. Section F extends this; it does not
  * rebuild it.
  */
-export const metadata = { title: "styleguide — flakehound" };
+export const metadata = { title: "styleguide" };
 
 const tokens = [
   ["--color-bg", "#0F0F0F", "bg-bg"],
@@ -37,7 +39,7 @@ const tokens = [
 
 export default function StyleguidePage() {
   return (
-    <main className="mx-auto max-w-[680px] px-6 py-24">
+    <Page>
       <SectionLabel>styleguide</SectionLabel>
       <TwoToneHeading
         className="mt-4"
@@ -215,6 +217,28 @@ export default function StyleguidePage() {
           motion system.
         </Body>
       </Section>
-    </main>
+
+      <Section label="metadata strip">
+        <MetaStrip
+          items={[
+            "github actions webhooks",
+            "deduplicated on delivery id",
+            "wilson 95% ci",
+          ]}
+        />
+      </Section>
+
+      <Section label="shell">
+        <LabelValueRow label="nav" value="on every page, 56px" />
+        <LabelValueRow label="footer" value="hairline + metadata strip" />
+        <LabelValueRow label="404" value="/nonexistent" tone="muted" />
+        <LabelValueRow
+          label="error boundary"
+          value="retry, no message"
+          tone="muted"
+        />
+        <LabelValueRow label="title template" value="%s — flakehound" />
+      </Section>
+    </Page>
   );
 }

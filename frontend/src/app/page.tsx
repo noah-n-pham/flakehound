@@ -3,6 +3,7 @@ import {
   Body,
   InlineLink,
   LabelValueRow,
+  Page,
   Section,
   SectionLabel,
   StatBlock,
@@ -70,7 +71,7 @@ function jobRows(jobs: JobRow[]) {
  */
 function SignedOut() {
   return (
-    <main className="mx-auto max-w-[680px] px-6 py-24">
+    <Page>
       <SectionLabel>report</SectionLabel>
       <TwoToneHeading
         className="mt-4"
@@ -87,7 +88,7 @@ function SignedOut() {
         The <InlineLink href="/public/flaky">public board</InlineLink> needs no
         account.
       </Body>
-    </main>
+    </Page>
   );
 }
 
@@ -107,7 +108,7 @@ export default async function ReportPage() {
   const distinctJobNames = new Set(jobs.map((job) => job.name)).size;
 
   return (
-    <main className="mx-auto max-w-[680px] px-6 py-24">
+    <Page>
       <SectionLabel>report</SectionLabel>
       <TwoToneHeading
         className="mt-4"
@@ -189,6 +190,6 @@ export default async function ReportPage() {
           different matrix legs are different jobs.
         </Body>
       </Section>
-    </main>
+    </Page>
   );
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, Inter, JetBrains_Mono } from "next/font/google";
 
+import { Footer } from "@/components/footer";
 import { Nav } from "@/components/nav";
 import "./globals.css";
 
@@ -21,7 +22,12 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "flakehound",
+  // The template means a page declares "public board" and never restates the brand,
+  // so no page can drift to a different separator or word order.
+  title: {
+    default: "flakehound",
+    template: "%s — flakehound",
+  },
   description: "flaky ci jobs, found from history you already have",
 };
 
@@ -39,9 +45,12 @@ export default function RootLayout({
       lang="en"
       className={`${instrumentSerif.variable} ${inter.variable} ${jetbrainsMono.variable}`}
     >
-      <body>
+      {/* The shell is a column: nav, then the page, then the footer pinned below it
+          rather than to the viewport — every page here is taller than the screen. */}
+      <body className="flex min-h-screen flex-col">
         <Nav />
-        {children}
+        <div className="flex-1">{children}</div>
+        <Footer />
       </body>
     </html>
   );

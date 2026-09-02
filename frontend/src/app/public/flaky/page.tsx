@@ -1,6 +1,7 @@
 import {
   Body,
   InlineLink,
+  Page,
   Section,
   SectionLabel,
   StatBlock,
@@ -12,7 +13,7 @@ import { listPublicFlaky, type PublicFlakyRow } from "@/lib/api";
 /** Live rows out of the rollup, so nothing here is prerendered at build time. */
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "public board — flakehound" };
+export const metadata = { title: "public board" };
 
 const WINDOW_DAYS = 30;
 const LIMIT = 50;
@@ -49,7 +50,7 @@ export default async function PublicBoardPage() {
   const repos = new Set(board.map((row) => row.repo_full_name)).size;
 
   return (
-    <main className="mx-auto max-w-[960px] px-6 py-24">
+    <Page wide>
       <SectionLabel>public board</SectionLabel>
       <TwoToneHeading
         className="mt-4"
@@ -119,6 +120,6 @@ export default async function PublicBoardPage() {
           above a job that has flaked forty times in a thousand.
         </Body>
       </Section>
-    </main>
+    </Page>
   );
 }
