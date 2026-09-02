@@ -128,6 +128,28 @@ async def test_repositories_added_to_an_existing_install(db_session):
     assert repos == [(payloads.REPO_ID, True), (62_000_099, True)]
 
 
+async def test_a_minimal_repository_leaves_the_branch_unknown_rather_than_guessing(db_session):
+    """Pins the shape of a real `repositories_added` entry (turn 26).
+
+    An installation event names a repo with five keys and no owner object, so
+    `owner` is derived from `full_name` and `default_branch` stays NULL until an
+    event that actually carries it arrives. Defaulting it to `main` would be a
+    guess stored as a fact.
+    """
+    added = payloads.minimal_repository(repo_id=62_000_099, name="other")
+    assert set(added) == {"id", "name", "node_id", "full_name", "private"}
+
+    await deliver(
+        db_session,
+        payloads.installation_repositories_event(action="added", added=[added]),
+    )
+
+    repo = await _repo(db_session, 62_000_099)
+    assert (repo.owner, repo.name) == ("khoi", "other")
+    assert repo.default_branch is None
+    assert repo.private is False
+
+
 async def test_repositories_removed_are_deactivated_not_deleted(db_session):
     await deliver(
         db_session,

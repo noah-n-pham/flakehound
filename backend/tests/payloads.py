@@ -27,14 +27,18 @@ def repository(private: bool = False) -> dict[str, Any]:
 
 
 def minimal_repository(repo_id: int = REPO_ID, name: str = "flakehound") -> dict[str, Any]:
-    """What an installation event carries: no owner object and no default branch.
+    """What an installation event carries, verified against a real delivery.
 
-    GitHub calls this a "minimal repository" and it is why `upsert_repository`
-    has to fall back to splitting `full_name` for the owner.
+    Production's `repositories_added` held exactly these five keys:
+    `{"id": 1083370024, "name": "form-check", "node_id": "R_kgDOQJLqKA",
+    "private": false, "full_name": "noah-n-pham/form-check"}` — no owner object
+    and no default branch, which is why `upsert_repository` falls back to
+    splitting `full_name` and leaves the branch unknown.
     """
     return {
         "id": repo_id,
         "name": name,
+        "node_id": f"R_{repo_id}",
         "full_name": f"khoi/{name}",
         "private": False,
     }
