@@ -17,7 +17,7 @@ from sqlalchemy import BigInteger, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.detection import FAILURE, opportunity_filter, outcome_expression
-from app.models import FlakeEvent, Job, JobStatsDaily
+from app.models import FlakeEvent, Job, JobStatsDaily, Repository
 
 # Two-sided 95%: the z that leaves 2.5% in each tail.
 Z_95 = 1.959963984540054
@@ -74,6 +74,25 @@ class JobFlakiness:
     @property
     def rank_key(self) -> float:
         return self.interval.lower if self.interval else -1.0
+
+    @property
+    def identity(self) -> tuple:
+        """Breaks a rank tie deterministically. Most jobs never flake, so most of a
+        board is tied at a lower bound of zero and the order would otherwise be
+        whatever the aggregate happened to return."""
+        return (self.job_name, self.workflow_id or 0)
+
+
+@dataclass(frozen=True)
+class PublicJobFlakiness(JobFlakiness):
+    """A leaderboard row from the cross-repo public board, which names its repo."""
+
+    repo_id: int
+    repo_full_name: str
+
+    @property
+    def identity(self) -> tuple:
+        return (self.repo_full_name, *super().identity)
 
 
 async def flaky_jobs(
@@ -133,11 +152,84 @@ async def flaky_jobs(
     )
 
 
-def _ranked(leaderboard: list[JobFlakiness], limit: int) -> list[JobFlakiness]:
+def _ranked[RowT: JobFlakiness](leaderboard: list[RowT], limit: int) -> list[RowT]:
     # Ranked by the lower bound; opportunities break a tie, because the job we have
-    # watched longer is the more useful of two equally suspicious ones.
+    # watched longer is the more useful of two equally suspicious ones. Anything still
+    # tied is ordered by name, so a `limit` cuts the same rows off every time — sort is
+    # stable, so the first pass survives inside the second's ties.
+    leaderboard.sort(key=lambda job: job.identity)
     leaderboard.sort(key=lambda job: (job.rank_key, job.opportunities), reverse=True)
     return leaderboard[:limit]
+
+
+async def public_flaky_jobs(
+    session: AsyncSession,
+    *,
+    window_days: int = 30,
+    limit: int = 50,
+    now: datetime | None = None,
+) -> list[PublicJobFlakiness]:
+    """The cross-repo leaderboard behind `/public/flaky`: public repos only, no auth.
+
+    **This query takes no repo id.** Which rows are visible is decided entirely by a
+    join to `repositories` filtered on `private = false`, so there is no parameter a
+    caller could supply to reach a private repo, and no way to forget the filter and
+    still get rows back — the join is where the repo's name comes from.
+
+    `active = false` is excluded too, which the spec does not ask for. It means an
+    uninstalled repo drops off the public board: removing the App is the nearest thing
+    to withdrawing consent, and continuing to publish a repo's data afterwards is not
+    defensible (D-042).
+
+    Served from the rollup like every other aggregate, so the same window rules apply
+    as `flaky_jobs()` — a whole number of UTC days, current to the last sweep.
+    """
+    cutoff = ((now or datetime.now(UTC)) - timedelta(days=window_days)).date()
+    rows = (
+        await session.execute(
+            select(
+                Repository.id.label("repo_id"),
+                Repository.full_name.label("repo_full_name"),
+                JobStatsDaily.workflow_id,
+                JobStatsDaily.job_name,
+                func.sum(JobStatsDaily.opportunities).label("opportunities"),
+                func.sum(JobStatsDaily.failures).label("failures"),
+                func.sum(JobStatsDaily.flakes).label("flakes"),
+                func.max(JobStatsDaily.last_flake_at).label("last_flake_at"),
+            )
+            .join(Repository, Repository.id == JobStatsDaily.repo_id)
+            .where(
+                Repository.private.is_(False),
+                Repository.active.is_(True),
+                JobStatsDaily.day >= cutoff,
+            )
+            .group_by(
+                Repository.id,
+                Repository.full_name,
+                JobStatsDaily.workflow_id,
+                JobStatsDaily.job_name,
+            )
+            .having(func.sum(JobStatsDaily.opportunities) > 0)
+        )
+    ).all()
+
+    return _ranked(
+        [
+            PublicJobFlakiness(
+                repo_id=row.repo_id,
+                repo_full_name=row.repo_full_name,
+                workflow_id=row.workflow_id,
+                job_name=row.job_name,
+                opportunities=row.opportunities,
+                failures=row.failures,
+                flakes=row.flakes,
+                last_flake_at=row.last_flake_at,
+                interval=wilson_interval(row.flakes, row.opportunities),
+            )
+            for row in rows
+        ],
+        limit,
+    )
 
 
 async def flaky_jobs_from_facts(

@@ -9,7 +9,7 @@ from app.apimetrics import UNMATCHED, get_recorder, write_process_metrics
 from app.config import get_settings
 from app.db import dispose_engine, get_sessionmaker
 from app.logging import configure_logging, get_logger
-from app.routes import api, health, internal, webhooks
+from app.routes import api, health, internal, public, webhooks
 
 log = get_logger(__name__)
 
@@ -70,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(webhooks.router)
     app.include_router(api.router)
     app.include_router(internal.router)
+    app.include_router(public.router)
     return app
 
 
