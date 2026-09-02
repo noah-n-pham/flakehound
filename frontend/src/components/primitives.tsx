@@ -111,17 +111,24 @@ export function Button({
   children,
   variant = "primary",
   disabled = false,
+  type = "button",
+  size = "default",
 }: {
   children: ReactNode;
   variant?: "primary" | "secondary";
   disabled?: boolean;
+  /** `submit` is what makes this usable inside a server-action form. */
+  type?: "button" | "submit";
+  /** `compact` fits the 56px nav bar; everything else uses the default. */
+  size?: "default" | "compact";
 }) {
   return (
     <button
-      type="button"
+      type={type}
       disabled={disabled}
       className={clsx(
-        "rounded-[2px] px-4 py-2 text-[13px] transition-opacity duration-150",
+        "rounded-[2px] transition-opacity duration-150",
+        size === "compact" ? "px-3 py-1.5 text-[12px]" : "px-4 py-2 text-[13px]",
         disabled
           ? "cursor-not-allowed border border-border text-text-faint"
           : variant === "primary"

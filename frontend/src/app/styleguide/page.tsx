@@ -165,6 +165,14 @@ export default function StyleguidePage() {
           <Button variant="secondary">secondary</Button>
           <Button disabled>disabled</Button>
         </div>
+        {/* The compact size exists for the 56px nav, where the default's 13px
+            text and 8px padding crowd the bar. Same component, one prop. */}
+        <div className="mt-6 flex items-center gap-4">
+          <Button size="compact">compact primary</Button>
+          <Button size="compact" variant="secondary">
+            compact secondary
+          </Button>
+        </div>
       </Block>
 
       <Block name="rule">

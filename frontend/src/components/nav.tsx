@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { SessionControls } from "@/components/session-controls";
+
 /** 56px tall, lowercase brand left, lowercase links right, 1px bottom border. */
 export function Nav() {
   return (
@@ -8,9 +10,10 @@ export function Nav() {
         <Link href="/" className="text-[15px] text-text">
           flakehound
         </Link>
-        <div className="flex gap-6 text-[13px] text-text-muted">
+        <div className="flex items-center gap-6 text-[13px] text-text-muted">
           <Link href="/">report</Link>
           <Link href="/styleguide">styleguide</Link>
+          <SessionControls />
         </div>
       </div>
     </nav>
