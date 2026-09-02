@@ -13,3 +13,15 @@ import secrets
 
 os.environ.setdefault("GITHUB_WEBHOOK_SECRET", secrets.token_hex(32))
 os.environ.setdefault("INTERNAL_API_TOKEN", secrets.token_hex(32))
+
+from app.config import Settings  # noqa: E402  (must follow the environment above)
+
+# Cut the suite off from the developer's `.env`.
+#
+# It was hermetic by luck until turn 27, when `.env` gained the App id and a path
+# to the real private key — and a test asserting that a missing credential raises
+# began passing or failing depending on whose machine it ran on. A test must never
+# read a real secret, and "needs no .env" has to be enforced rather than assumed.
+# The database URL's default already matches what `.env` sets, so local Postgres
+# is still found.
+Settings.model_config["env_file"] = None

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
@@ -43,6 +44,17 @@ class Settings(BaseSettings):
     # and in Vercel's environment (H-004), or every read returns 401.
     internal_api_token: str
 
+    # The App's own identity, for signing the JWT that buys installation tokens.
+    # Optional because the webhook path does not need them: an ingest-only deploy
+    # must still start. Whoever calls GitHub raises if they are missing.
+    github_app_id: int | None = None
+    github_app_private_key: str | None = None
+    # Local development points at the .pem on disk (H-012) rather than pasting a
+    # private key into `.env`. Production injects the key itself from Secrets
+    # Manager, where there is no file to point at.
+    github_app_private_key_path: str | None = None
+    github_api_base_url: str = "https://api.github.com"
+
     # Statements slower than this are logged by the worker's slow-query hook (SPEC §9).
     slow_query_ms: int = 500
 
@@ -69,6 +81,18 @@ class Settings(BaseSettings):
     # minutes is three orders of magnitude of headroom. Section D's backfill
     # makes one row an HTTP crawl; revisit the number then, with a measurement.
     reaper_timeout_seconds: float = 300.0
+
+    @model_validator(mode="after")
+    def _load_private_key(self) -> "Settings":
+        """Resolve the key to PEM text, from whichever source this environment has."""
+        if self.github_app_private_key is None and self.github_app_private_key_path:
+            self.github_app_private_key = Path(self.github_app_private_key_path).read_text()
+        if self.github_app_private_key:
+            # A PEM that travelled through an env var often arrives with its
+            # newlines escaped, and cryptography rejects that with an error that
+            # says nothing about newlines.
+            self.github_app_private_key = self.github_app_private_key.replace("\\n", "\n").strip()
+        return self
 
     @model_validator(mode="after")
     def _assemble_database_url(self) -> "Settings":
