@@ -17,7 +17,15 @@ from app.config import get_settings
 from app.db import dispose_engine, get_sessionmaker
 from app.handlers import handle
 from app.logging import configure_logging, get_logger
-from app.queue import claim_batch, fail_exhausted, mark_done, mark_for_retry, reap_stuck
+from app.queue import (
+    claim_batch,
+    defer,
+    fail_exhausted,
+    mark_done,
+    mark_for_retry,
+    reap_stuck,
+)
+from app.ratelimit import RateLimitExceeded
 
 log = get_logger(__name__)
 
@@ -40,6 +48,26 @@ async def run_once(sessionmaker: async_sessionmaker, batch_size: int) -> int:
                 await mark_done(session, job.id)
                 await session.commit()
                 log.info("worker.processed", queue_id=job.id, github_event=job.event)
+            except RateLimitExceeded as exc:
+                # Not a failure: GitHub said "not yet". The row goes back with the
+                # wait it was given and keeps every attempt it had, because none
+                # of them was spent here.
+                await session.rollback()
+                async with sessionmaker() as defer_session:
+                    await defer(
+                        defer_session,
+                        job,
+                        seconds=exc.retry_after,
+                        reason=f"rate limited: {exc}",
+                    )
+                    await defer_session.commit()
+                log.warning(
+                    "worker.deferred",
+                    queue_id=job.id,
+                    installation_id=exc.installation_id,
+                    retry_after=round(exc.retry_after, 1),
+                    attempts=job.attempts - 1,
+                )
             except Exception as exc:
                 await session.rollback()
                 async with sessionmaker() as retry_session:

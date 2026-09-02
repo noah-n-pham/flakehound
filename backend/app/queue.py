@@ -125,6 +125,32 @@ async def mark_for_retry(session: AsyncSession, job: ClaimedJob, error: str) -> 
     return job.exhausted
 
 
+async def defer(session: AsyncSession, job: ClaimedJob, *, seconds: float, reason: str) -> None:
+    """Put a row back without counting the attempt, because nothing was attempted.
+
+    This is for being told to wait — a rate limit — rather than for failing.
+    `mark_for_retry` is the wrong tool: it counts the attempt the claim already
+    incremented, so five rate limits in an hour would dead-letter history work
+    that nothing is wrong with. Deferral is deliberately unbounded (D-040): a
+    rate limit clears when GitHub's window resets, and the wait itself is the
+    throttle, so there is no runaway to protect against.
+    """
+    await session.execute(
+        update(EventQueue)
+        .where(EventQueue.id == job.id)
+        .values(
+            status="pending",
+            locked_at=None,
+            attempts=EventQueue.attempts - 1,
+            # Postgres' clock, so the wait means the same thing to every worker.
+            next_attempt_at=func.now() + literal(timedelta(seconds=seconds), Interval()),
+            last_error=reason[:2000],
+            updated_at=func.now(),
+        )
+        .execution_options(synchronize_session=False)
+    )
+
+
 async def reap_stuck(session: AsyncSession) -> list[int]:
     """Return rows claimed longer than the timeout to pending (SPEC §5).
 
