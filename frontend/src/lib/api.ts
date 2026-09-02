@@ -33,10 +33,12 @@ export type JobRow = {
   duration_seconds: number | null;
 };
 
-/** One row of the public board. It names its repo, because the board spans repos. */
-export type PublicFlakyRow = {
-  repo_id: number;
-  repo_full_name: string;
+/**
+ * One ranked job. Both bounds and the point estimate arrive from the API, which is
+ * the only place the Wilson interval is computed — the width of the interval is what
+ * says how much the rate is worth believing, so it travels with it.
+ */
+export type FlakyRow = {
   workflow_id: number | null;
   job_name: string;
   opportunities: number;
@@ -46,6 +48,12 @@ export type PublicFlakyRow = {
   flake_rate: number | null;
   wilson_lower: number | null;
   wilson_upper: number | null;
+};
+
+/** The same row on the public board, which spans repos and so must name one. */
+export type PublicFlakyRow = FlakyRow & {
+  repo_id: number;
+  repo_full_name: string;
 };
 
 function required(name: string): string {
@@ -86,6 +94,22 @@ export function listJobs(
   limit = 50,
 ): Promise<JobRow[]> {
   return apiGet<JobRow[]>(`/api/repos/${repoId}/jobs?limit=${limit}`, authorizedRepoIds);
+}
+
+/**
+ * One repo's leaderboard, ranked by the Wilson interval's lower bound rather than by
+ * the rate. Served from the daily rollup, so the window is a whole number of UTC days.
+ */
+export function listFlaky(
+  repoId: number,
+  authorizedRepoIds: number[],
+  windowDays = 30,
+  limit = 50,
+): Promise<FlakyRow[]> {
+  return apiGet<FlakyRow[]>(
+    `/api/repos/${repoId}/flaky?window_days=${windowDays}&limit=${limit}`,
+    authorizedRepoIds,
+  );
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   Button,
   Heading,
   InlineLink,
+  IntervalBar,
   LabelValueRow,
   MetaStrip,
   Page,
@@ -10,6 +11,7 @@ import {
   Section,
   SectionLabel,
   StatBlock,
+  Switcher,
   Table,
   TwoToneHeading,
 } from "@/components/primitives";
@@ -147,6 +149,68 @@ export default function StyleguidePage() {
               result: <span className="text-ok">success</span>,
               duration: "6m 55s",
             },
+          ]}
+        />
+      </Section>
+
+      <Section label="interval bar">
+        <Body className="mb-8">
+          A 95% Wilson interval drawn on one shared scale — the faint span is the
+          interval, the bright tick is the rate itself. All three rows below are
+          scaled to 40 points, so their widths mean the same thing: 3 flakes in 22
+          runs is barely a narrower claim than 1 in 3, and 40 in 1,204 is a
+          different kind of statement altogether.
+        </Body>
+        <Table
+          columns={[
+            { key: "job", header: "job" },
+            { key: "counts", header: "flakes / opps", numeric: true },
+            { key: "rate", header: "rate", numeric: true },
+            { key: "interval", header: "wilson 95% · pts", numeric: true },
+          ]}
+          rows={[
+            {
+              job: "build and deploy",
+              counts: "3 / 22",
+              rate: "13.6%",
+              interval: (
+                <span className="inline-flex items-center gap-3">
+                  <IntervalBar lower={0.047} upper={0.333} point={0.136} max={0.4} />
+                  <span>4.7–33.3</span>
+                </span>
+              ),
+            },
+            {
+              job: "e2e (chromium)",
+              counts: "1 / 3",
+              rate: "33.3%",
+              interval: (
+                <span className="inline-flex items-center gap-3">
+                  <IntervalBar lower={0.061} upper={0.79} point={0.333} max={0.4} />
+                  <span>6.1–79.0</span>
+                </span>
+              ),
+            },
+            {
+              job: "test (ubuntu-latest, 3.11)",
+              counts: "40 / 1204",
+              rate: "3.3%",
+              interval: (
+                <span className="inline-flex items-center gap-3">
+                  <IntervalBar lower={0.024} upper={0.045} point={0.033} max={0.4} />
+                  <span>2.4–4.5</span>
+                </span>
+              ),
+            },
+          ]}
+        />
+      </Section>
+
+      <Section label="switcher">
+        <Switcher
+          items={[
+            { label: "noah-n-pham/flakehound", href: "#", current: true },
+            { label: "noah-n-pham/form-check", href: "#", current: false },
           ]}
         />
       </Section>

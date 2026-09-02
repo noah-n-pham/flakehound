@@ -212,6 +212,83 @@ export function toneClass(tone: Tone): string {
   }
 }
 
+/**
+ * A confidence interval drawn to scale: a hairline track, the interval as a faint
+ * span across it, the point estimate as a bright tick inside the span. Beside the
+ * printed range it answers the question the numbers make you do arithmetic for —
+ * how wide is this, next to the row above it.
+ *
+ * `max` is the top of the scale and belongs to the *page*, not the row: every bar in
+ * a table has to share one scale or the widths compare nothing. The printed range
+ * next to it is what carries the absolute values, so the bar never has to be read
+ * off an axis it does not have.
+ */
+export function IntervalBar({
+  lower,
+  upper,
+  point,
+  max = 1,
+}: {
+  lower: number;
+  upper: number;
+  point?: number | null;
+  /** Rate at the right-hand end of the track, as a fraction. */
+  max?: number;
+}) {
+  const scale = max > 0 ? max : 1;
+  const position = (value: number) => Math.min(Math.max(value / scale, 0), 1) * 100;
+  const left = position(lower);
+  // A zero-width interval is a real answer (a job with no opportunities cannot have
+  // one, but a very certain job nearly does), and it has to remain visible.
+  const width = Math.max(position(upper) - left, 0.8);
+
+  return (
+    <span className="relative inline-block h-[7px] w-[88px] border-b border-border align-middle">
+      <span
+        className="absolute top-[2px] h-[3px] bg-text-faint"
+        style={{ left: `${left}%`, width: `${width}%` }}
+      />
+      {point === null || point === undefined ? null : (
+        <span
+          className="absolute top-0 h-[7px] w-px bg-text"
+          style={{ left: `${position(point)}%` }}
+        />
+      )}
+    </span>
+  );
+}
+
+/**
+ * Mono links choosing which one thing a page is about. The current choice is plain
+ * text rather than a link to itself, which is also the only marker — the nav has no
+ * active state either, and inventing a highlight here would be a second convention.
+ */
+export function Switcher({
+  items,
+}: {
+  items: { label: string; href: string; current: boolean }[];
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-[13px]">
+      {items.map((item) =>
+        item.current ? (
+          <span key={item.href} className="text-text">
+            {item.label}
+          </span>
+        ) : (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="text-text-muted transition-colors duration-150 hover:text-text"
+          >
+            {item.label}
+          </Link>
+        ),
+      )}
+    </div>
+  );
+}
+
 /** Full-column hairline. Separators are rules, never boxes. */
 export function Rule() {
   return <hr className="border-0 border-t border-border" />;

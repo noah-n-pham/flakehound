@@ -9,6 +9,7 @@ import {
   TwoToneHeading,
 } from "@/components/primitives";
 import { listPublicFlaky, type PublicFlakyRow } from "@/lib/api";
+import { formatDay, formatPercent, formatPoints } from "@/lib/format";
 
 /** Live rows out of the rollup, so nothing here is prerendered at build time. */
 export const dynamic = "force-dynamic";
@@ -18,21 +19,6 @@ export const metadata = { title: "public board" };
 const WINDOW_DAYS = 30;
 const LIMIT = 50;
 
-function formatPercent(value: number | null): string {
-  if (value === null) return "—";
-  return `${(value * 100).toFixed(1)}%`;
-}
-
-/** The interval as a range in points, because the column header carries the unit. */
-function formatInterval(row: PublicFlakyRow): string {
-  if (row.wilson_lower === null || row.wilson_upper === null) return "—";
-  return `${(row.wilson_lower * 100).toFixed(1)}–${(row.wilson_upper * 100).toFixed(1)}`;
-}
-
-function formatDay(iso: string | null): string {
-  return iso ? iso.slice(0, 10) : "—";
-}
-
 function boardRows(board: PublicFlakyRow[]) {
   return board.map((row) => ({
     repo: row.repo_full_name,
@@ -40,7 +26,7 @@ function boardRows(board: PublicFlakyRow[]) {
     opportunities: `${row.opportunities}`,
     flakes: `${row.flakes}`,
     rate: formatPercent(row.flake_rate),
-    interval: formatInterval(row),
+    interval: formatPoints(row.wilson_lower, row.wilson_upper),
     last: formatDay(row.last_flake_at),
   }));
 }
