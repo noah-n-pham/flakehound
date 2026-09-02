@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from app.config import get_settings
 from app.db import Base
 from app.github import get_limiter, reset_api_state
-from app.metrics import Metric, collect, latest_snapshot, write_snapshot
+from app.metrics import Metric, collect, latest_samples, write_snapshot
 from app.models import EventQueue, MetricsSnapshot, WebhookDelivery
 from app.worker import snapshot_metrics
 from tests import payloads
@@ -36,6 +36,11 @@ def value(metrics: list[Metric], name: str, **labels: str) -> float:
 
 def names(metrics: list[Metric]) -> set[str]:
     return {metric.name for metric in metrics}
+
+
+async def stored(session, *, now: datetime = NOW) -> list[Metric]:
+    """What `/internal/metrics` would serve: the newest point of every live series."""
+    return [sample.metric for sample in await latest_samples(session, now=now)]
 
 
 @pytest.fixture
@@ -236,8 +241,7 @@ async def test_a_second_pass_in_one_minute_corrects_the_sample_rather_than_doubl
     assert rows_after_first == len(first)
     assert rows_after_second == rows_after_first
 
-    _, points = await latest_snapshot(db_session)
-    assert value(points, "jobs") == 2
+    assert value(await stored(db_session), "jobs") == 2
 
 
 async def test_samples_older_than_the_retention_window_are_pruned(db_session):
@@ -253,16 +257,25 @@ async def test_samples_older_than_the_retention_window_are_pruned(db_session):
     assert remaining == NOW.replace(second=0, microsecond=0)
 
 
-async def test_the_latest_snapshot_is_one_minute_and_not_a_mixture(db_session):
+async def test_a_series_reports_its_newest_point(db_session):
     await deliver(db_session, attempt(1, "success"))
     await write_snapshot(db_session, now=NOW - timedelta(minutes=1))
     await deliver(db_session, attempt(2, "success"))
     await write_snapshot(db_session, now=NOW)
 
-    captured_at, points = await latest_snapshot(db_session)
+    samples = await latest_samples(db_session, now=NOW)
+    jobs = next(sample for sample in samples if sample.metric.name == "jobs")
 
-    assert captured_at == NOW.replace(second=0, microsecond=0)
-    assert value(points, "jobs") == 2
+    assert jobs.metric.value == 2
+    assert jobs.captured_at == NOW.replace(second=0, microsecond=0)
+
+
+async def test_a_series_whose_writer_stopped_drops_out_rather_than_looking_current(db_session):
+    """A number with no time attached is worse than an absence."""
+    await write_snapshot(db_session, now=NOW - timedelta(hours=1))
+
+    assert await stored(db_session) == []
+    assert await stored(db_session, now=NOW - timedelta(hours=1)) != []
 
 
 async def test_the_worker_writes_a_sample(db_session):
@@ -271,7 +284,7 @@ async def test_the_worker_writes_a_sample(db_session):
 
     written = await snapshot_metrics(one_session_factory(db_session))
 
-    _, points = await latest_snapshot(db_session)
+    points = await stored(db_session, now=datetime.now(UTC))
     assert value(points, "jobs") == 1
     assert names(points) == names(written)
 
@@ -300,7 +313,9 @@ async def test_the_metrics_endpoint_serves_the_latest_sample(client, db_session)
     assert body["captured_at"] is not None
     assert 0 <= body["age_seconds"] < 120
     jobs = [point for point in body["metrics"] if point["name"] == "jobs"]
-    assert jobs == [{"name": "jobs", "value": 1.0, "labels": {}}]
+    assert len(jobs) == 1
+    assert (jobs[0]["value"], jobs[0]["labels"]) == (1.0, {})
+    assert jobs[0]["captured_at"] == body["captured_at"]
 
 
 async def test_the_endpoint_is_honest_before_the_first_sample(client, db_session):

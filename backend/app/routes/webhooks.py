@@ -4,6 +4,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.apimetrics import DELIVERIES_DUPLICATE, DELIVERIES_RECEIVED, get_recorder
 from app.config import get_settings
 from app.db import session_scope
 from app.ingest import record_delivery
@@ -49,6 +50,12 @@ async def receive_github_webhook(
     queued = await record_delivery(
         session, delivery_id=delivery_id, event=event, payload=payload
     )
+    # SPEC §9's duplicate-delivery rate has to be counted here: a duplicate is a
+    # delivery whose insert failed, so the database keeps no record that it arrived.
+    recorder = get_recorder()
+    recorder.count(DELIVERIES_RECEIVED)
+    if not queued:
+        recorder.count(DELIVERIES_DUPLICATE)
     # `event` is structlog's own key for the message, hence `github_event`.
     log.info(
         "webhook.received",

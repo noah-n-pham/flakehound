@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     metrics_interval_seconds: float = 60.0
     metrics_window_seconds: float = 3600.0
     metrics_retention_days: int = 30
+    # How many request latencies the API process keeps per endpoint per minute. The
+    # reservoir is what bounds memory under load; the percentile stays unbiased
+    # however far the traffic overshoots it.
+    metrics_sample_limit: int = 512
 
     # The two config flags SPEC §2's edge-case table asks for, at its defaults. A
     # timed-out job counts as an eligible failure; a job that completed none of its

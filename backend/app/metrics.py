@@ -220,21 +220,27 @@ async def collect(
     ]
 
 
-async def write_snapshot(
-    session: AsyncSession, *, now: datetime | None = None, **kwargs: Any
-) -> list[Metric]:
-    """Sample every counter into one minute's rows, then prune old samples.
+async def store_samples(
+    session: AsyncSession, metrics: list[Metric], *, now: datetime
+) -> datetime:
+    """Write one process's sample of the minute containing `now`. Caller commits.
 
     `captured_at` is truncated to the minute and the insert upserts, so two passes
     inside one minute leave one sample rather than two — the same discipline every
     other write path here follows, for the same reason: something will eventually
     run twice.
-    """
-    settings = get_settings()
-    now = now or datetime.now(UTC)
-    captured_at = now.replace(second=0, microsecond=0)
 
-    metrics = await collect(session, now=now, **kwargs)
+    **Two processes write this table, and that is safe because they write disjoint
+    series.** The worker owns everything measurable from the database; the API owns
+    the counters only it can see (`app/apimetrics.py`). The unique key is
+    `(captured_at, name, labels)`, so the rule is one writer per *series*, not one
+    writer per table — nothing here would stop a second writer from fighting over one
+    name, so a new series has to belong to exactly one process by construction.
+    """
+    captured_at = now.replace(second=0, microsecond=0)
+    if not metrics:
+        return captured_at
+
     stmt = insert(MetricsSnapshot).values(
         [
             {
@@ -251,6 +257,22 @@ async def write_snapshot(
             constraint="uq_metrics_snapshots_point", set_={"value": stmt.excluded.value}
         )
     )
+    return captured_at
+
+
+async def write_snapshot(
+    session: AsyncSession, *, now: datetime | None = None, **kwargs: Any
+) -> list[Metric]:
+    """The worker's pass: sample every database-derived counter, then prune old rows.
+
+    Pruning belongs here rather than in `store_samples` so that there is exactly one
+    process deleting, whatever number of processes are writing.
+    """
+    settings = get_settings()
+    now = now or datetime.now(UTC)
+
+    metrics = await collect(session, now=now, **kwargs)
+    await store_samples(session, metrics, now=now)
 
     pruned = (
         await session.execute(
@@ -264,28 +286,54 @@ async def write_snapshot(
     return metrics
 
 
-async def latest_snapshot(session: AsyncSession) -> tuple[datetime | None, list[Metric]]:
-    """The most recent minute's sample, which is what `/internal/metrics` serves.
+@dataclass(frozen=True)
+class Sample:
+    """One series' most recent point, and when it was taken."""
 
-    The endpoint reads the table rather than measuring on demand, so that the API
-    and the worker cannot disagree about a number — and because two of the series
-    (rate-limit headroom above all) only exist in the process that does the work.
+    metric: Metric
+    captured_at: datetime
+
+
+async def latest_samples(
+    session: AsyncSession, *, now: datetime | None = None, lookback_seconds: float | None = None
+) -> list[Sample]:
+    """The newest point of every series still reporting — what `/internal/metrics` serves.
+
+    **Per series rather than per minute**, because the two writers run on independent
+    timers: the worker's minute and the API's minute usually coincide and sometimes do
+    not, and "the latest minute" would drop whichever process happened to write second
+    into the previous one. Each point therefore carries its own `captured_at`, and a
+    reader can see that one writer has gone quiet while the other has not.
+
+    A series whose writer has stopped for longer than the lookback disappears rather
+    than being reported as current. That is the same choice as emitting a zero: a
+    number with no time attached is worse than an absence.
+
+    The endpoint reads this table rather than measuring on demand, because half of
+    these counters only exist inside the process that produced them.
     """
-    captured_at = (
-        await session.execute(select(func.max(MetricsSnapshot.captured_at)))
-    ).scalar_one_or_none()
-    if captured_at is None:
-        return None, []
+    settings = get_settings()
+    now = now or datetime.now(UTC)
+    lookback = lookback_seconds or settings.metrics_interval_seconds * 5
 
     rows = (
         (
             await session.execute(
                 select(MetricsSnapshot)
-                .where(MetricsSnapshot.captured_at == captured_at)
-                .order_by(MetricsSnapshot.name, MetricsSnapshot.id)
+                .where(MetricsSnapshot.captured_at >= now - timedelta(seconds=lookback))
+                # DISTINCT ON keeps the first row of each group, so the ordering is the
+                # selection: newest sample per (name, labels).
+                .distinct(MetricsSnapshot.name, MetricsSnapshot.labels)
+                .order_by(
+                    MetricsSnapshot.name,
+                    MetricsSnapshot.labels,
+                    MetricsSnapshot.captured_at.desc(),
+                )
             )
         )
         .scalars()
         .all()
     )
-    return captured_at, [Metric(row.name, float(row.value), row.labels) for row in rows]
+    return [
+        Sample(Metric(row.name, float(row.value), row.labels), row.captured_at) for row in rows
+    ]

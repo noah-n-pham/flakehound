@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_internal_token
 from app.db import session_scope
-from app.metrics import latest_snapshot
+from app.metrics import latest_samples
 
 router = APIRouter(prefix="/internal", dependencies=[Depends(require_internal_token)])
 
@@ -23,13 +23,16 @@ SessionDep = Annotated[AsyncSession, Depends(session_scope)]
 
 
 class MetricPoint(BaseModel):
+    """One series' newest point. `captured_at` is per point, not per response."""
+
     name: str
     value: float
     labels: dict[str, str]
+    captured_at: datetime
 
 
 class MetricsResponse(BaseModel):
-    """`captured_at` is null only before the worker has written its first sample."""
+    """`captured_at` is the newest point of any series, null before the first sample."""
 
     captured_at: datetime | None
     age_seconds: float | None
@@ -38,20 +41,26 @@ class MetricsResponse(BaseModel):
 
 @router.get("/metrics")
 async def metrics(session: SessionDep) -> MetricsResponse:
-    """The most recent minute's sample of SPEC §9's counters.
+    """The newest point of every series still reporting (SPEC §9).
 
-    The worker writes the samples and this reads them, so the age is part of the
-    answer: a stale `captured_at` means the worker has stopped, which is itself the
-    most useful thing this endpoint can tell you.
+    Each point carries its own timestamp because two processes write these counters on
+    independent timers — the worker the database-derived ones, the API its own — and a
+    single response-level age would hide one of them falling behind. That is the most
+    useful thing this endpoint can say: not the numbers, but which writer has stopped.
     """
-    captured_at, points = await latest_snapshot(session)
+    now = datetime.now(UTC)
+    samples = await latest_samples(session, now=now)
+    newest = max((sample.captured_at for sample in samples), default=None)
     return MetricsResponse(
-        captured_at=captured_at,
-        age_seconds=(
-            (datetime.now(UTC) - captured_at).total_seconds() if captured_at else None
-        ),
+        captured_at=newest,
+        age_seconds=(now - newest).total_seconds() if newest else None,
         metrics=[
-            MetricPoint(name=point.name, value=point.value, labels=point.labels)
-            for point in points
+            MetricPoint(
+                name=sample.metric.name,
+                value=sample.metric.value,
+                labels=sample.metric.labels,
+                captured_at=sample.captured_at,
+            )
+            for sample in samples
         ],
     )
