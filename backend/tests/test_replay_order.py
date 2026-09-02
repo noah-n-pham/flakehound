@@ -18,7 +18,14 @@ from app.models import FlakeEvent, Job, WorkflowRun
 from app.stats import flaky_jobs
 from tests import payloads
 from tests.helpers import deliver
-from tests.test_detection import RUN_ID, SHA, attempt, run_event
+from tests.test_detection import (
+    OTHER_WORKFLOW_ID,
+    RUN_ID,
+    SHA,
+    WORKFLOW_ID,
+    attempt,
+    run_event,
+)
 
 JOB_ID = 99_996_168_477
 JOB_NAME = "build and deploy"
@@ -141,6 +148,23 @@ async def test_every_processing_order_converges_on_the_same_run_row(db_session):
 
     assert len(set(results)) == 1, results
     assert results[0][:2] == ("completed", "success")
+
+
+async def test_a_runs_workflow_id_is_first_write_wins(db_session):
+    """A run's workflow cannot change, so a stored value is never replaced.
+
+    GitHub will not disagree with itself about this, and that is the point: an immutable
+    identity should be order-independent by construction rather than by trusting upstream.
+    Last-write-wins left it depending on which delivery was processed last.
+    """
+    await deliver(
+        db_session,
+        payloads.workflow_run(run_id=RUN_ID, head_sha=SHA, workflow_id=WORKFLOW_ID),
+        payloads.workflow_run(run_id=RUN_ID, head_sha=SHA, workflow_id=OTHER_WORKFLOW_ID),
+    )
+
+    run = (await db_session.execute(select(WorkflowRun))).scalar_one()
+    assert run.workflow_id == WORKFLOW_ID
 
 
 async def test_detection_survives_a_late_in_progress_delivery(db_session):

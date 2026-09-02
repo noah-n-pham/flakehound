@@ -33,7 +33,7 @@ def _never_regress(
     table: Any,
     progress_columns: tuple[str, ...],
     *,
-    always_merge: tuple[str, ...] = (),
+    identity_columns: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Merge a payload only when it is at least as advanced as the row already stored.
 
@@ -43,9 +43,10 @@ def _never_regress(
     happened in production and turned a successful job run into one with no conclusion,
     which silently removed it from Signal A's opportunities (turn 19).
 
-    `always_merge` columns are exempt because they carry identity rather than progress:
-    a workflow id is equally true in every delivery, and whichever one supplies it first
-    is right.
+    `identity_columns` are exempt from the ranking because they carry identity rather than
+    progress, but they are **first-write-wins** rather than last: a run's workflow cannot
+    change, so once the value is known it is never replaced. Last-write-wins would leave
+    even an immutable field order-dependent if two payloads ever disagreed.
     """
     advanced = _status_rank(excluded.status) >= _status_rank(table.status)
     merged: dict[str, Any] = {
@@ -60,8 +61,8 @@ def _never_regress(
     merged["status"] = case((advanced, excluded.status), else_=table.status)
     merged.update(
         {
-            column: func.coalesce(excluded[column], getattr(table, column))
-            for column in always_merge
+            column: func.coalesce(getattr(table, column), excluded[column])
+            for column in identity_columns
         }
     )
     return merged
@@ -210,7 +211,7 @@ async def upsert_run(
             "github_created_at",
             "github_updated_at",
         ),
-        always_merge=("workflow_id",),
+        identity_columns=("workflow_id",),
     )
     await session.execute(
         stmt.on_conflict_do_update(
@@ -311,7 +312,7 @@ async def upsert_job(
             "step_count",
             "completed_step_count",
         ),
-        always_merge=("workflow_id",),
+        identity_columns=("workflow_id",),
     )
     await session.execute(
         stmt.on_conflict_do_update(

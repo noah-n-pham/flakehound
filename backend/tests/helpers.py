@@ -23,6 +23,11 @@ def enqueue(
     return row
 
 
+def event_for(payload: dict[str, Any]) -> str:
+    """The event type a payload's shape implies, the way GitHub's header and body agree."""
+    return "workflow_run" if "workflow_run" in payload else "workflow_job"
+
+
 def one_session_factory(session: AsyncSession):
     """Hand the worker the test's own session, so its commits still roll back."""
 
@@ -52,7 +57,6 @@ async def deliver(session: AsyncSession, *payloads: dict[str, Any]) -> None:
     """
     factory = one_session_factory(session)
     for payload in payloads:
-        event = "workflow_run" if "workflow_run" in payload else "workflow_job"
-        enqueue(session, payload, event=event)
+        enqueue(session, payload, event=event_for(payload))
         await session.flush()
         await run_once(factory, batch_size=10)
