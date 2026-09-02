@@ -1,4 +1,15 @@
-"""Authenticated read endpoints. The browser never calls these — Next.js does."""
+"""Authenticated read endpoints. The browser never calls these — Next.js does.
+
+Every query here is filtered to the repo ids in `X-Authorized-Repo-Ids`, which the BFF
+resolves from GitHub's installations API per SPEC §8b. Two rules the endpoints below
+follow, and a third that has to be remembered rather than enforced:
+
+* **The filter is in the SQL**, never applied to rows after they are fetched.
+* **An unauthorized repo is a 404, not a 403.** A 403 would confirm the repo exists,
+  which is exactly the fact being protected.
+* **A new endpoint under `/api` is not automatically filtered.** The router's
+  dependency supplies the ids; it cannot make a query use them.
+"""
 
 from datetime import datetime
 from typing import Annotated
@@ -8,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import require_internal_token
+from app.auth import AuthorizedRepos, require_internal_token
 from app.db import session_scope
 from app.models import Job, Repository
 from app.stats import flaky_jobs
@@ -54,16 +65,27 @@ class FlakyJob(BaseModel):
     wilson_upper: float | None
 
 
-async def _require_repo(session: AsyncSession, repo_id: int) -> None:
+async def _require_repo(session: AsyncSession, repo_id: int, authorized: list[int]) -> None:
+    """404 unless this repo both exists and is one the caller may see.
+
+    The authorization check is part of the same query rather than a branch in front of
+    it, so "does it exist" and "may you see it" cannot answer differently — and an
+    unauthorized repo is indistinguishable from a missing one in the response.
+    """
     exists = (
-        await session.execute(select(Repository.id).where(Repository.id == repo_id))
+        await session.execute(
+            select(Repository.id).where(
+                Repository.id == repo_id, Repository.id.in_(authorized)
+            )
+        )
     ).scalar_one_or_none()
     if exists is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown repo")
 
 
 @router.get("/repos")
-async def list_repos(session: SessionDep) -> list[RepoSummary]:
+async def list_repos(session: SessionDep, authorized: AuthorizedRepos) -> list[RepoSummary]:
+    """The caller's own installed repos. An empty authorized set is an empty list."""
     rows = (
         await session.execute(
             select(
@@ -75,6 +97,7 @@ async def list_repos(session: SessionDep) -> list[RepoSummary]:
                 func.max(Job.completed_at).label("last_job_at"),
             )
             .outerjoin(Job, Job.repo_id == Repository.id)
+            .where(Repository.id.in_(authorized))
             .group_by(Repository.id)
             .order_by(Repository.full_name)
         )
@@ -85,6 +108,7 @@ async def list_repos(session: SessionDep) -> list[RepoSummary]:
 @router.get("/repos/{repo_id}/jobs")
 async def list_jobs(
     session: SessionDep,
+    authorized: AuthorizedRepos,
     repo_id: Annotated[int, Path(description="GitHub's repo id")],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[JobRow]:
@@ -94,7 +118,7 @@ async def list_jobs(
     rather than an aggregate — SPEC §8's rollup rule applies to the leaderboard
     and minutes endpoints that Section E adds.
     """
-    await _require_repo(session, repo_id)
+    await _require_repo(session, repo_id, authorized)
 
     jobs = (
         (
@@ -132,6 +156,7 @@ async def list_jobs(
 @router.get("/repos/{repo_id}/flaky")
 async def list_flaky_jobs(
     session: SessionDep,
+    authorized: AuthorizedRepos,
     repo_id: Annotated[int, Path(description="GitHub's repo id")],
     window_days: Annotated[int, Query(ge=1, le=365)] = 30,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -145,7 +170,7 @@ async def list_flaky_jobs(
     because the interval's width is what tells a reader how much to trust the rate —
     a job seen three times is not the same claim as a job seen three hundred.
     """
-    await _require_repo(session, repo_id)
+    await _require_repo(session, repo_id, authorized)
 
     board = await flaky_jobs(session, repo_id=repo_id, window_days=window_days, limit=limit)
     return [

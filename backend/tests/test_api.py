@@ -1,5 +1,6 @@
 """Read endpoints and the internal bearer token (SPEC §8)."""
 
+from app.auth import AUTHORIZED_REPOS_HEADER
 from app.config import get_settings
 from app.models import Installation, Job, Repository, WorkflowRun
 from app.rollup import rollup_repository
@@ -10,7 +11,22 @@ from tests.test_detection import RUN_ID, WORKFLOW_ID, attempt, run_event
 
 
 def auth() -> dict[str, str]:
+    """The internal bearer token alone — no authorized-repo set.
+
+    Kept separate from `reader()` because "authenticated" and "authorized" are two
+    different claims here, and `tests/test_authorization.py` needs to send the first
+    without the second.
+    """
     return {"authorization": f"Bearer {get_settings().internal_api_token}"}
+
+
+def reader(*repo_ids: int) -> dict[str, str]:
+    """What the BFF sends: the token plus the repo ids this caller may see (SPEC §8b).
+
+    Defaults to the fixture repo, because that is what almost every test here wants.
+    """
+    ids = repo_ids or (payloads.REPO_ID,)
+    return {**auth(), AUTHORIZED_REPOS_HEADER: ",".join(str(repo_id) for repo_id in ids)}
 
 
 async def seed_jobs(session, count: int = 2) -> None:
@@ -75,7 +91,7 @@ async def test_a_token_without_the_bearer_scheme_is_rejected(client):
 async def test_the_repo_list_summarizes_real_rows(client, db_session):
     await seed_jobs(db_session, count=3)
 
-    response = await client.get("/api/repos", headers=auth())
+    response = await client.get("/api/repos", headers=reader())
 
     assert response.status_code == 200
     body = response.json()
@@ -89,7 +105,7 @@ async def test_the_repo_list_summarizes_real_rows(client, db_session):
 async def test_the_jobs_endpoint_returns_real_job_rows(client, db_session):
     await seed_jobs(db_session, count=2)
 
-    response = await client.get(f"/api/repos/{payloads.REPO_ID}/jobs", headers=auth())
+    response = await client.get(f"/api/repos/{payloads.REPO_ID}/jobs", headers=reader())
 
     assert response.status_code == 200
     jobs = response.json()
@@ -106,7 +122,7 @@ async def test_the_jobs_endpoint_honours_its_limit(client, db_session):
     await seed_jobs(db_session, count=3)
 
     response = await client.get(
-        f"/api/repos/{payloads.REPO_ID}/jobs", params={"limit": 1}, headers=auth()
+        f"/api/repos/{payloads.REPO_ID}/jobs", params={"limit": 1}, headers=reader()
     )
 
     assert response.status_code == 200
@@ -116,7 +132,7 @@ async def test_the_jobs_endpoint_honours_its_limit(client, db_session):
 async def test_an_unknown_repo_is_a_404_not_an_empty_list(client, db_session):
     await seed_jobs(db_session)
 
-    response = await client.get("/api/repos/1234567/jobs", headers=auth())
+    response = await client.get("/api/repos/1234567/jobs", headers=reader())
 
     assert response.status_code == 404
 
@@ -157,7 +173,7 @@ async def test_the_flaky_endpoint_needs_the_token(client):
 async def test_an_unknown_repo_is_a_404_on_the_flaky_endpoint(client, db_session):
     await seed_jobs(db_session)
 
-    response = await client.get("/api/repos/1234567/flaky", headers=auth())
+    response = await client.get("/api/repos/1234567/flaky", headers=reader())
 
     assert response.status_code == 404
 
@@ -165,7 +181,7 @@ async def test_an_unknown_repo_is_a_404_on_the_flaky_endpoint(client, db_session
 async def test_the_flaky_endpoint_ranks_by_the_wilson_lower_bound(client, db_session):
     await seed_a_flaky_and_a_clean_job(db_session)
 
-    response = await client.get(f"/api/repos/{payloads.REPO_ID}/flaky", headers=auth())
+    response = await client.get(f"/api/repos/{payloads.REPO_ID}/flaky", headers=reader())
 
     assert response.status_code == 200
     board = response.json()
@@ -193,7 +209,7 @@ async def test_the_flaky_endpoint_honours_its_window(client, db_session):
     await seed_a_flaky_and_a_clean_job(db_session)
 
     response = await client.get(
-        f"/api/repos/{payloads.REPO_ID}/flaky", params={"window_days": 1}, headers=auth()
+        f"/api/repos/{payloads.REPO_ID}/flaky", params={"window_days": 1}, headers=reader()
     )
 
     assert response.status_code == 200
@@ -205,7 +221,7 @@ async def test_the_flaky_endpoint_rejects_a_nonsense_window(client, db_session):
     await seed_jobs(db_session)
 
     response = await client.get(
-        f"/api/repos/{payloads.REPO_ID}/flaky", params={"window_days": 0}, headers=auth()
+        f"/api/repos/{payloads.REPO_ID}/flaky", params={"window_days": 0}, headers=reader()
     )
 
     assert response.status_code == 422

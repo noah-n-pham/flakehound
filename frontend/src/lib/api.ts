@@ -3,6 +3,12 @@
  * lives in this process and never reaches the browser, which is why neither
  * variable is NEXT_PUBLIC_. A missing variable throws — a dashboard that
  * silently renders nothing looks the same as a healthy empty account.
+ *
+ * Every read also carries `X-Authorized-Repo-Ids`, the set resolved in
+ * `lib/github.ts` from GitHub's installations API. It is a **required argument**
+ * rather than something looked up in here, because the caller is the only one that
+ * knows whether anybody is signed in — and the API answers 400 rather than
+ * unfiltered if it is missing, so forgetting is loud instead of dangerous.
  */
 
 export type RepoSummary = {
@@ -37,12 +43,15 @@ function required(name: string): string {
   return value;
 }
 
-async function apiGet<T>(path: string): Promise<T> {
+async function apiGet<T>(path: string, authorizedRepoIds: number[]): Promise<T> {
   const base = required("API_BASE_URL").replace(/\/$/, "");
   const token = required("INTERNAL_API_TOKEN");
 
   const response = await fetch(`${base}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Authorized-Repo-Ids": authorizedRepoIds.join(","),
+    },
     cache: "no-store",
   });
 
@@ -52,10 +61,14 @@ async function apiGet<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function listRepos(): Promise<RepoSummary[]> {
-  return apiGet<RepoSummary[]>("/api/repos");
+export function listRepos(authorizedRepoIds: number[]): Promise<RepoSummary[]> {
+  return apiGet<RepoSummary[]>("/api/repos", authorizedRepoIds);
 }
 
-export function listJobs(repoId: number, limit = 50): Promise<JobRow[]> {
-  return apiGet<JobRow[]>(`/api/repos/${repoId}/jobs?limit=${limit}`);
+export function listJobs(
+  repoId: number,
+  authorizedRepoIds: number[],
+  limit = 50,
+): Promise<JobRow[]> {
+  return apiGet<JobRow[]>(`/api/repos/${repoId}/jobs?limit=${limit}`, authorizedRepoIds);
 }

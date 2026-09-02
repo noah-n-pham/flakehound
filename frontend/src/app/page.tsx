@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import {
   LabelValueRow,
   SectionLabel,
@@ -8,6 +9,7 @@ import {
   type Tone,
 } from "@/components/primitives";
 import { listJobs, listRepos, type JobRow } from "@/lib/api";
+import { authorizedRepoIds } from "@/lib/github";
 
 /** Live production facts, so nothing here is prerendered at build time. */
 export const dynamic = "force-dynamic";
@@ -58,10 +60,43 @@ function jobRows(jobs: JobRow[]) {
   }));
 }
 
+/**
+ * Signed out. Until this slice the page served a private repository's CI metadata to
+ * anyone with the URL — accepted deliberately while auth was being built (H-004b), and
+ * closed here.
+ */
+function SignedOut() {
+  return (
+    <main className="mx-auto max-w-[680px] px-6 py-24">
+      <SectionLabel>report</SectionLabel>
+      <TwoToneHeading
+        className="mt-4"
+        lead="Flaky jobs,"
+        trail="found from history you already have."
+      />
+      <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
+        Sign in with GitHub to see the repositories you have installed Flakehound
+        on. Which repositories you can read is resolved from GitHub itself on
+        every session, so this page can only ever show you what GitHub already
+        says is yours.
+      </p>
+      <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
+        The public leaderboard needs no account.
+      </p>
+    </main>
+  );
+}
+
 export default async function ReportPage() {
-  const repos = await listRepos();
+  const session = await auth();
+  const repoIds = session?.user ? await authorizedRepoIds() : null;
+  if (!session?.user || repoIds === null) {
+    return <SignedOut />;
+  }
+
+  const repos = await listRepos(repoIds);
   const repo = repos[0];
-  const jobs = repo ? await listJobs(repo.id, 50) : [];
+  const jobs = repo ? await listJobs(repo.id, repoIds, 50) : [];
 
   const executions = repos.reduce((total, item) => total + item.job_count, 0);
   const reruns = jobs.filter((job) => job.run_attempt > 1).length;
@@ -143,7 +178,8 @@ export default async function ReportPage() {
           <SectionLabel>repository</SectionLabel>
           <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
             No installed repositories yet. Install the app on a repo that runs
-            Actions and push to it.
+            Actions and push to it. If you have just installed it, this page
+            re-resolves your repositories from GitHub every five minutes.
           </p>
         </section>
       )}

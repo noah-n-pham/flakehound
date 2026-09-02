@@ -16,7 +16,7 @@ from app.rollup import rollup_repository
 from app.stats import public_flaky_jobs
 from tests.helpers import deliver
 from tests.payloads import REPO_ID
-from tests.test_api import auth
+from tests.test_api import reader
 from tests.test_detection import OTHER_RUN_ID, OTHER_WORKFLOW_ID, RUN_ID, attempt, run_event
 
 # The default fixture repo (`khoi/flakehound`, public) plus two more, each with its own
@@ -123,7 +123,9 @@ async def test_a_private_repo_never_appears_beside_a_public_one(client, db_sessi
     # And the private repo's flakes are real: the endpoint that requires a token has
     # them, so the absence above is the filter working rather than an empty database.
     private = await client.get(
-        f"/api/repos/{PRIVATE_REPO_ID}/flaky", params={"window_days": 90}, headers=auth()
+        f"/api/repos/{PRIVATE_REPO_ID}/flaky",
+        params={"window_days": 90},
+        headers=reader(PRIVATE_REPO_ID),
     )
     assert [row["job_name"] for row in private.json()] == ["build and deploy", "stable leg"]
     assert private.json()[0]["flakes"] == 2
