@@ -1,5 +1,7 @@
 import {
+  Body,
   InlineLink,
+  Section,
   SectionLabel,
   StatBlock,
   Table,
@@ -54,19 +56,18 @@ export default async function PublicBoardPage() {
         lead="The flakiest CI,"
         trail="ranked by what the evidence supports."
       />
-      <p className="mt-8 max-w-[680px] text-[15px] leading-[1.6] text-text-muted">
+      <Body className="mt-8 max-w-[680px]">
         Every public repository that has installed Flakehound, over the last{" "}
         {WINDOW_DAYS} days. No account is needed to read this page, and private
         repositories are excluded by the query itself rather than by anything on
         this side of it. Your own repositories are on the{" "}
         <InlineLink href="/">report</InlineLink>, which does need an account.
-      </p>
+      </Body>
 
       {board.length > 0 ? (
         <>
-          <section className="mt-24">
-            <SectionLabel>board</SectionLabel>
-            <div className="mt-8 flex flex-wrap gap-x-24 gap-y-8">
+          <Section label="board">
+            <div className="flex flex-wrap gap-x-24 gap-y-8">
               <StatBlock
                 value={`${board.length}`}
                 label="ranked jobs"
@@ -78,41 +79,36 @@ export default async function PublicBoardPage() {
                 caption={`over ${board.reduce((total, row) => total + row.opportunities, 0)} opportunities`}
               />
             </div>
-          </section>
+          </Section>
 
-          <section className="mt-24">
-            <SectionLabel>ranked by wilson lower bound</SectionLabel>
-            <div className="mt-8">
-              <Table
-                columns={[
-                  { key: "repo", header: "repository" },
-                  { key: "job", header: "job" },
-                  { key: "opportunities", header: "opps", numeric: true },
-                  { key: "flakes", header: "flakes", numeric: true },
-                  { key: "rate", header: "rate", numeric: true },
-                  { key: "interval", header: "wilson 95% · pts", numeric: true },
-                  { key: "last", header: "last flake", numeric: true },
-                ]}
-                rows={boardRows(board)}
-              />
-            </div>
-          </section>
+          <Section label="ranked by wilson lower bound">
+            <Table
+              columns={[
+                { key: "repo", header: "repository" },
+                { key: "job", header: "job" },
+                { key: "opportunities", header: "opps", numeric: true },
+                { key: "flakes", header: "flakes", numeric: true },
+                { key: "rate", header: "rate", numeric: true },
+                { key: "interval", header: "wilson 95% · pts", numeric: true },
+                { key: "last", header: "last flake", numeric: true },
+              ]}
+              rows={boardRows(board)}
+            />
+          </Section>
         </>
       ) : (
-        <section className="mt-24">
-          <SectionLabel>board</SectionLabel>
-          <p className="mt-8 max-w-[680px] text-[15px] leading-[1.6] text-text-muted">
+        <Section label="board">
+          <Body className="max-w-[680px]">
             Nothing to rank yet. The repositories that have installed Flakehound
             so far are private, and this page will not show them — so it is empty
             for the reason it should be, rather than because detection found
             nothing.
-          </p>
-        </section>
+          </Body>
+        </Section>
       )}
 
-      <section className="mt-24">
-        <SectionLabel>how the ranking works</SectionLabel>
-        <p className="mt-8 max-w-[680px] text-[15px] leading-[1.6] text-text-muted">
+      <Section label="how the ranking works">
+        <Body className="max-w-[680px]">
           A flake is a job that failed and then passed with the commit unchanged —
           either on a re-run, or against a sibling job on the same commit. The
           rate is flakes over opportunities, and the interval beside it is the
@@ -121,8 +117,8 @@ export default async function PublicBoardPage() {
           spans repositories than on one that does not: one flake in two runs is
           a 50% rate on almost no evidence, and sorting by rate would put it
           above a job that has flaked forty times in a thousand.
-        </p>
-      </section>
+        </Body>
+      </Section>
     </main>
   );
 }

@@ -1,8 +1,11 @@
 import {
+  Body,
   Button,
+  Heading,
   InlineLink,
   LabelValueRow,
   Rule,
+  Section,
   SectionLabel,
   StatBlock,
   Table,
@@ -26,25 +29,11 @@ const tokens = [
   ["--color-text-muted", "#8A8A8A", "bg-text-muted"],
   ["--color-text-faint", "#5A5A5A", "bg-text-faint"],
   ["--color-btn-fill", "#E8E8E8", "bg-btn-fill"],
+  ["--color-btn-fill-text", "#111111", "bg-btn-fill-text"],
   ["--color-ok", "#7C9A7C", "bg-ok"],
   ["--color-warn", "#A3936A", "bg-warn"],
   ["--color-bad", "#A37C7C", "bg-bad"],
 ];
-
-function Block({
-  name,
-  children,
-}: {
-  name: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mt-24">
-      <SectionLabel>{name}</SectionLabel>
-      <div className="mt-8">{children}</div>
-    </section>
-  );
-}
 
 export default function StyleguidePage() {
   return (
@@ -56,7 +45,7 @@ export default function StyleguidePage() {
         trail="in one place so there is never a second version."
       />
 
-      <Block name="color tokens">
+      <Section label="color tokens">
         <div className="grid grid-cols-1 gap-0">
           {tokens.map(([token, hex, swatch]) => (
             <div
@@ -73,36 +62,45 @@ export default function StyleguidePage() {
             </div>
           ))}
         </div>
-      </Block>
+      </Section>
 
-      <Block name="type scale">
+      <Section label="type scale">
         <p className="font-display text-[44px] leading-[48px] font-light text-text">
           display 44/48
         </p>
-        <p className="mt-8 font-display text-[28px] font-light text-text">
+        <Heading className="mt-8" level={2}>
           h2 28
-        </p>
-        <p className="mt-8 font-display text-[20px] font-light text-text">
+        </Heading>
+        <Heading className="mt-8" level={3}>
           h3 20
-        </p>
-        <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
+        </Heading>
+        <Body className="mt-8">
           body 15 in Inter at line-height 1.6, muted. Paragraphs and labels only
           — every number, timestamp, SHA, and uppercase label is mono instead.
-        </p>
+        </Body>
         <p className="mt-4 text-[13px] text-text-muted">small 13</p>
         <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-text-faint">
           mono-label 11
         </p>
-      </Block>
+      </Section>
 
-      <Block name="two-tone heading">
+      <Section label="typeface roles">
+        <LabelValueRow label="display headings" value="Instrument Serif" />
+        <LabelValueRow label="body copy and labels" value="Inter" />
+        <LabelValueRow
+          label="numbers, data, metadata"
+          value="JetBrains Mono"
+        />
+      </Section>
+
+      <Section label="two-tone heading">
         <TwoToneHeading
           lead="Flaky jobs,"
           trail="found from history you already have."
         />
-      </Block>
+      </Section>
 
-      <Block name="stat block">
+      <Section label="stat block">
         <div className="flex flex-wrap gap-x-24 gap-y-8">
           <StatBlock
             value="4.2"
@@ -112,15 +110,15 @@ export default function StyleguidePage() {
           />
           <StatBlock value="5" label="job executions" caption="across 1 repository" />
         </div>
-      </Block>
+      </Section>
 
-      <Block name="label / value rows">
+      <Section label="label / value rows">
         <LabelValueRow label="full name" value="noah-n-pham/flakehound" />
         <LabelValueRow label="visibility" value="private" tone="muted" />
         <LabelValueRow label="last completed job" value="2026-09-01 19:43 UTC" />
-      </Block>
+      </Section>
 
-      <Block name="table">
+      <Section label="table">
         <Table
           columns={[
             { key: "name", header: "job" },
@@ -149,18 +147,18 @@ export default function StyleguidePage() {
             },
           ]}
         />
-      </Block>
+      </Section>
 
-      <Block name="status tones">
+      <Section label="status tones">
         <div className="flex gap-8 font-mono text-[13px]">
           <span className="text-ok">success</span>
           <span className="text-bad">failure</span>
           <span className="text-warn">timed_out</span>
           <span className="text-text-muted">cancelled</span>
         </div>
-      </Block>
+      </Section>
 
-      <Block name="buttons">
+      <Section label="buttons">
         <div className="flex items-center gap-4">
           <Button>primary</Button>
           <Button variant="secondary">secondary</Button>
@@ -174,19 +172,49 @@ export default function StyleguidePage() {
             compact secondary
           </Button>
         </div>
-      </Block>
+      </Section>
 
-      <Block name="inline link">
-        <p className="text-[15px] leading-[1.6] text-text-muted">
+      <Section label="inline link">
+        <Body>
           Body copy with an <InlineLink href="/public/flaky">inline link</InlineLink>{" "}
           in it. Monochrome leaves no colour to signal a link with, so the
           underline is the affordance and hover strengthens it.
-        </p>
-      </Block>
+        </Body>
+      </Section>
 
-      <Block name="rule">
+      <Section label="rule">
         <Rule />
-      </Block>
+      </Section>
+
+      <Section label="section">
+        <Body>
+          This block, and every block above it, is the section primitive: 96px of
+          rhythm above the label, 32px between the label and its content. The
+          label is the only argument.
+        </Body>
+      </Section>
+
+      <Section label="layout">
+        <LabelValueRow label="content column" value="max-w-[680px] centered" />
+        <LabelValueRow
+          label="wide data tables"
+          value="max-w-[960px]"
+          tone="muted"
+        />
+        <LabelValueRow label="between major sections" value="96px" />
+        <LabelValueRow label="between blocks" value="32px" />
+        <LabelValueRow label="inside a block" value="16px" />
+        <LabelValueRow label="nav height" value="56px" />
+        <LabelValueRow label="border radius" value="2px or 0" />
+      </Section>
+
+      <Section label="motion">
+        <Body>
+          150ms opacity fades and nothing else — no slides, no springs, no
+          scroll-triggered animation. Hover the buttons above to see the whole
+          motion system.
+        </Body>
+      </Section>
     </main>
   );
 }

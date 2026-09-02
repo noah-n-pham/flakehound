@@ -38,6 +38,74 @@ export function TwoToneHeading({
   );
 }
 
+/**
+ * h2 and h3 from DESIGN.md's scale. The two-tone h1 is a separate component rather
+ * than `level={1}`, because what makes it the identity marker is its two clauses,
+ * not its size.
+ */
+export function Heading({
+  level,
+  children,
+  className,
+}: {
+  level: 2 | 3;
+  children: ReactNode;
+  className?: string;
+}) {
+  const Tag = level === 2 ? "h2" : "h3";
+  return (
+    <Tag
+      className={clsx(
+        "font-display font-light text-text",
+        level === 2 ? "text-[28px]" : "text-[20px]",
+        className,
+      )}
+    >
+      {children}
+    </Tag>
+  );
+}
+
+/**
+ * Body copy: 15px Inter at line-height 1.6, muted. A component and not three
+ * utility classes, because those three were being retyped on every paragraph and
+ * the day one of them says `leading-[1.5]` nobody will notice.
+ */
+export function Body({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <p className={clsx("text-[15px] leading-[1.6] text-text-muted", className)}>
+      {children}
+    </p>
+  );
+}
+
+/**
+ * A major page section: 96px of rhythm above it, an uppercase mono label, 32px
+ * between label and content. Every page was hand-rolling that triple and
+ * `/styleguide` kept a private copy of it — drift in the file whose job is to
+ * prevent drift.
+ */
+export function Section({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="mt-24">
+      <SectionLabel>{label}</SectionLabel>
+      <div className="mt-8">{children}</div>
+    </section>
+  );
+}
+
 /** Very large light number, small unit beside it, mono caption underneath. */
 export function StatBlock({
   value,

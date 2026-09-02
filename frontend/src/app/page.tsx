@@ -1,7 +1,9 @@
 import { auth } from "@/auth";
 import {
+  Body,
   InlineLink,
   LabelValueRow,
+  Section,
   SectionLabel,
   StatBlock,
   Table,
@@ -75,16 +77,16 @@ function SignedOut() {
         lead="Flaky jobs,"
         trail="found from history you already have."
       />
-      <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
+      <Body className="mt-8">
         Sign in with GitHub to see the repositories you have installed Flakehound
         on. Which repositories you can read is resolved from GitHub itself on
         every session, so this page can only ever show you what GitHub already
         says is yours.
-      </p>
-      <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
+      </Body>
+      <Body className="mt-8">
         The <InlineLink href="/public/flaky">public board</InlineLink> needs no
         account.
-      </p>
+      </Body>
     </main>
   );
 }
@@ -112,16 +114,15 @@ export default async function ReportPage() {
         lead="Flaky jobs,"
         trail="found from history you already have."
       />
-      <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
+      <Body className="mt-8">
         Every job execution below arrived as a GitHub Actions webhook, was
         deduplicated on its delivery id, and was written to Postgres by one
         worker. Nothing was uploaded from inside a test job and no workflow file
         was edited to produce it.
-      </p>
+      </Body>
 
-      <section className="mt-24">
-        <SectionLabel>ingested</SectionLabel>
-        <div className="mt-8 flex flex-wrap gap-x-24 gap-y-8">
+      <Section label="ingested">
+        <div className="flex flex-wrap gap-x-24 gap-y-8">
           <StatBlock
             value={`${executions}`}
             label="job executions"
@@ -133,62 +134,51 @@ export default async function ReportPage() {
             caption={`attempt 2 or later, over ${distinctJobNames} distinct job names`}
           />
         </div>
-      </section>
+      </Section>
 
       {repo ? (
         <>
-          <section className="mt-24">
-            <SectionLabel>repository</SectionLabel>
-            <div className="mt-8">
-              <LabelValueRow label="full name" value={repo.full_name} />
-              <LabelValueRow
-                label="visibility"
-                value={repo.private ? "private" : "public"}
-                tone="muted"
-              />
-              <LabelValueRow label="repo id" value={`${repo.id}`} />
-              <LabelValueRow
-                label="job executions"
-                value={`${repo.job_count}`}
-              />
-              <LabelValueRow
-                label="last completed job"
-                value={formatUtc(repo.last_job_at)}
-              />
-            </div>
-          </section>
+          <Section label="repository">
+            <LabelValueRow label="full name" value={repo.full_name} />
+            <LabelValueRow
+              label="visibility"
+              value={repo.private ? "private" : "public"}
+              tone="muted"
+            />
+            <LabelValueRow label="repo id" value={`${repo.id}`} />
+            <LabelValueRow label="job executions" value={`${repo.job_count}`} />
+            <LabelValueRow
+              label="last completed job"
+              value={formatUtc(repo.last_job_at)}
+            />
+          </Section>
 
-          <section className="mt-24">
-            <SectionLabel>recent job executions</SectionLabel>
-            <div className="mt-8">
-              <Table
-                columns={[
-                  { key: "name", header: "job" },
-                  { key: "attempt", header: "att", numeric: true },
-                  { key: "sha", header: "sha", numeric: true },
-                  { key: "conclusion", header: "result" },
-                  { key: "duration", header: "duration", numeric: true },
-                  { key: "started", header: "started · utc", numeric: true },
-                ]}
-                rows={jobRows(jobs)}
-              />
-            </div>
-          </section>
+          <Section label="recent job executions">
+            <Table
+              columns={[
+                { key: "name", header: "job" },
+                { key: "attempt", header: "att", numeric: true },
+                { key: "sha", header: "sha", numeric: true },
+                { key: "conclusion", header: "result" },
+                { key: "duration", header: "duration", numeric: true },
+                { key: "started", header: "started · utc", numeric: true },
+              ]}
+              rows={jobRows(jobs)}
+            />
+          </Section>
         </>
       ) : (
-        <section className="mt-24">
-          <SectionLabel>repository</SectionLabel>
-          <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
+        <Section label="repository">
+          <Body>
             No installed repositories yet. Install the app on a repo that runs
             Actions and push to it. If you have just installed it, this page
             re-resolves your repositories from GitHub every five minutes.
-          </p>
-        </section>
+          </Body>
+        </Section>
       )}
 
-      <section className="mt-24">
-        <SectionLabel>what this does not show yet</SectionLabel>
-        <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
+      <Section label="what this does not show yet">
+        <Body>
           Detection runs in the worker now — re-run recovery, same-commit
           disagreement, and a leaderboard ranked by the lower bound of the Wilson
           interval — but this page has not been rebuilt around it. These are
@@ -197,8 +187,8 @@ export default async function ReportPage() {
           also predates detection, so no flake events have been derived from it
           yet. Job names are stored whole, matrix values included, because
           different matrix legs are different jobs.
-        </p>
-      </section>
+        </Body>
+      </Section>
     </main>
   );
 }
