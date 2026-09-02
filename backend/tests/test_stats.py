@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.rollup import rollup_repository
 from app.stats import flaky_jobs, wilson_interval
 from tests.helpers import deliver
 from tests.payloads import REPO_ID
@@ -17,6 +18,16 @@ from tests.test_detection import OTHER_RUN_ID, RUN_ID, attempt, run_event
 
 def approx(value: float):
     return pytest.approx(value, abs=5e-5)
+
+
+async def leaderboard(session, *, repo_id: int = REPO_ID, **kwargs):
+    """The leaderboard as a reader sees it: rolled up first, then summed.
+
+    The rollup is a separate pass on the worker's sweep, so a test that wants to read
+    has to run it — which is the same ordering production has, one minute compressed.
+    """
+    await rollup_repository(session, repo_id=repo_id, now=kwargs.get("now"))
+    return await flaky_jobs(session, repo_id=repo_id, **kwargs)
 
 
 # --------------------------------------------------------------------------- #
@@ -101,7 +112,7 @@ async def test_the_leaderboard_ranks_a_flaky_job_above_a_clean_one(db_session):
         attempt(2, "success", name="stable leg"),
     )
 
-    board = await flaky_jobs(db_session, repo_id=REPO_ID)
+    board = await leaderboard(db_session)
 
     assert [job.job_name for job in board] == ["flaky leg", "stable leg"]
 
@@ -129,7 +140,7 @@ async def test_the_numerator_counts_flaky_job_runs_not_event_rows(db_session):
         attempt(3, "success"),
     )
 
-    job = (await flaky_jobs(db_session, repo_id=REPO_ID))[0]
+    job = (await leaderboard(db_session))[0]
 
     assert (job.opportunities, job.flakes) == (3, 2)
     assert job.interval.rate == approx(2 / 3)
@@ -144,15 +155,16 @@ async def test_both_signals_naming_one_job_run_count_it_once(db_session):
         attempt(2, "success"),
     )
 
-    job = (await flaky_jobs(db_session, repo_id=REPO_ID))[0]
+    job = (await leaderboard(db_session))[0]
 
     assert (job.opportunities, job.flakes) == (2, 2)
 
 
 async def test_a_job_with_no_opportunities_is_absent_rather_than_undefined(db_session):
+    """The rollup still has a row for it — two runs happened — with no opportunities."""
     await deliver(db_session, attempt(1, "cancelled"), attempt(2, "skipped"))
 
-    assert await flaky_jobs(db_session, repo_id=REPO_ID) == []
+    assert await leaderboard(db_session) == []
 
 
 async def test_the_window_excludes_older_job_runs(db_session):
@@ -162,13 +174,12 @@ async def test_the_window_excludes_older_job_runs(db_session):
         attempt(1, "failure"),
         attempt(2, "success"),
     )
-    assert await flaky_jobs(db_session, repo_id=REPO_ID, window_days=30) != []
+    assert await leaderboard(db_session, window_days=30) != []
 
     # The fixture payloads complete on 2026-08-31, so a one-day window in 2026-09-30
     # leaves nothing inside it.
-    board = await flaky_jobs(
+    board = await leaderboard(
         db_session,
-        repo_id=REPO_ID,
         window_days=1,
         now=datetime(2026, 9, 30, tzinfo=UTC),
     )
@@ -183,7 +194,7 @@ async def test_another_repos_flake_events_do_not_leak_in(db_session):
         attempt(2, "success"),
     )
 
-    assert await flaky_jobs(db_session, repo_id=REPO_ID + 1) == []
+    assert await leaderboard(db_session, repo_id=REPO_ID + 1) == []
 
 
 async def test_two_runs_disagreeing_put_every_run_in_the_group_at_risk(db_session):
@@ -196,7 +207,7 @@ async def test_two_runs_disagreeing_put_every_run_in_the_group_at_risk(db_sessio
         attempt(1, "success", run_id=OTHER_RUN_ID),
     )
 
-    job = (await flaky_jobs(db_session, repo_id=REPO_ID))[0]
+    job = (await leaderboard(db_session))[0]
 
     assert (job.opportunities, job.flakes) == (2, 2)
     assert job.interval.rate == 1.0

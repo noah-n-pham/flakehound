@@ -15,6 +15,7 @@ from itertools import permutations
 from sqlalchemy import select
 
 from app.models import FlakeEvent, Job, WorkflowRun
+from app.rollup import rollup_repository
 from app.stats import flaky_jobs
 from tests import payloads
 from tests.helpers import deliver
@@ -193,6 +194,7 @@ async def test_detection_survives_a_late_in_progress_delivery(db_session):
         late,
     )
 
+    await rollup_repository(db_session, repo_id=payloads.REPO_ID)
     board = await flaky_jobs(db_session, repo_id=payloads.REPO_ID)
     job = next(row for row in board if row.job_name == JOB_NAME)
 

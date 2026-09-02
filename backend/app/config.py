@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     backfill_page_size: int = 100
     backfill_result_cap: int = 1000
 
+    # The rollup's trailing window, recomputed whole (see app/rollup.py). It matches
+    # `backfill_days` on purpose: history we asked GitHub for is history the
+    # leaderboard should be able to read back.
+    rollup_days: int = 90
+
     # Retry (SPEC §5). The delay before attempt n is base * 2^(n-1), capped, so
     # the five attempts of the default ceiling span minutes rather than one
     # second — long enough to outlive a Postgres failover or a GitHub blip.

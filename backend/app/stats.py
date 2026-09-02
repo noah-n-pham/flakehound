@@ -17,7 +17,7 @@ from sqlalchemy import BigInteger, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.detection import FAILURE, opportunity_filter, outcome_expression
-from app.models import FlakeEvent, Job
+from app.models import FlakeEvent, Job, JobStatsDaily
 
 # Two-sided 95%: the z that leaves 2.5% in each tail.
 Z_95 = 1.959963984540054
@@ -86,15 +86,80 @@ async def flaky_jobs(
 ) -> list[JobFlakiness]:
     """The leaderboard for one repo: jobs ranked by their Wilson lower bound.
 
+    Served from `job_stats_daily`, per SPEC §8 — a window of daily rows summed, rather
+    than a window of job executions scanned. The counts mean exactly what they meant
+    when this read raw facts, because the rollup counts through the same
+    `opportunity_filter()` and the same evidence job ids (see `app/rollup.py`); what
+    changes is that the work happens once a minute instead of once a request.
+
+    Two consequences of reading days rather than timestamps. The window is a whole
+    number of UTC days, so `window_days=1` means "since the start of yesterday" rather
+    than "since this time yesterday". And a job whose runs were all ineligible has a
+    rollup row with zero opportunities, where the raw query simply had nothing — the
+    HAVING clause is what keeps such a job off the leaderboard rather than on it with
+    an undefined rate.
+    """
+    cutoff = ((now or datetime.now(UTC)) - timedelta(days=window_days)).date()
+    rows = (
+        await session.execute(
+            select(
+                JobStatsDaily.workflow_id,
+                JobStatsDaily.job_name,
+                func.sum(JobStatsDaily.opportunities).label("opportunities"),
+                func.sum(JobStatsDaily.failures).label("failures"),
+                func.sum(JobStatsDaily.flakes).label("flakes"),
+                func.max(JobStatsDaily.last_flake_at).label("last_flake_at"),
+            )
+            .where(JobStatsDaily.repo_id == repo_id, JobStatsDaily.day >= cutoff)
+            .group_by(JobStatsDaily.workflow_id, JobStatsDaily.job_name)
+            .having(func.sum(JobStatsDaily.opportunities) > 0)
+        )
+    ).all()
+
+    return _ranked(
+        [
+            JobFlakiness(
+                workflow_id=row.workflow_id,
+                job_name=row.job_name,
+                opportunities=row.opportunities,
+                failures=row.failures,
+                flakes=row.flakes,
+                last_flake_at=row.last_flake_at,
+                interval=wilson_interval(row.flakes, row.opportunities),
+            )
+            for row in rows
+        ],
+        limit,
+    )
+
+
+def _ranked(leaderboard: list[JobFlakiness], limit: int) -> list[JobFlakiness]:
+    # Ranked by the lower bound; opportunities break a tie, because the job we have
+    # watched longer is the more useful of two equally suspicious ones.
+    leaderboard.sort(key=lambda job: (job.rank_key, job.opportunities), reverse=True)
+    return leaderboard[:limit]
+
+
+async def flaky_jobs_from_facts(
+    session: AsyncSession,
+    *,
+    repo_id: int,
+    window_days: int = 30,
+    limit: int = 50,
+    now: datetime | None = None,
+) -> list[JobFlakiness]:
+    """The same leaderboard computed straight from the job rows — the rollup's oracle.
+
+    Nothing in production calls this. It exists because "the rollup is correct" is
+    only a claim if something independent can compute the same answer, and this is
+    that something: `tests/test_rollup.py` asserts the two agree over the same window.
+    Delete it only alongside that test.
+
     A *flaky job run* is one whose job id a signal named in its evidence. That is the
     numerator, and it counts the same thing as the denominator — SPEC §2 defines a
     flake event as "an opportunity satisfying Signal A or B", so both sides are counts
     of job runs (D-034). Counting event rows instead would mix units and double-count a
     re-run recovery, which both signals legitimately report.
-
-    Raw facts rather than the rollup, deliberately: `job_stats_daily` does not exist
-    yet. Section E moves this query behind it, which is also what stops it from
-    scanning a window of jobs on every request.
     """
     cutoff = (now or datetime.now(UTC)) - timedelta(days=window_days)
 
@@ -137,19 +202,18 @@ async def flaky_jobs(
         )
     ).all()
 
-    leaderboard = [
-        JobFlakiness(
-            workflow_id=row.workflow_id,
-            job_name=row.name,
-            opportunities=row.opportunities,
-            failures=row.failures,
-            flakes=row.flakes,
-            last_flake_at=row.last_flake_at,
-            interval=wilson_interval(row.flakes, row.opportunities),
-        )
-        for row in rows
-    ]
-    # Ranked by the lower bound; opportunities break a tie, because the job we have
-    # watched longer is the more useful of two equally suspicious ones.
-    leaderboard.sort(key=lambda job: (job.rank_key, job.opportunities), reverse=True)
-    return leaderboard[:limit]
+    return _ranked(
+        [
+            JobFlakiness(
+                workflow_id=row.workflow_id,
+                job_name=row.name,
+                opportunities=row.opportunities,
+                failures=row.failures,
+                flakes=row.flakes,
+                last_flake_at=row.last_flake_at,
+                interval=wilson_interval(row.flakes, row.opportunities),
+            )
+            for row in rows
+        ],
+        limit,
+    )

@@ -107,9 +107,16 @@ def workflow_job(
     head_sha: str = SHA,
     completed_steps: int = 3,
     total_steps: int | None = None,
+    started_at: str = "2026-08-31T14:00:00Z",
+    completed_at: str | None = "2026-08-31T14:04:12Z",
 ) -> dict[str, Any]:
     """`total_steps` above `completed_steps` is how a dead runner looks: steps were
-    planned and some never started."""
+    planned and some never started.
+
+    The timestamps are parameters because the rollup buckets by the UTC day a job
+    completed and aggregates the duration between them, so its tests need job runs
+    that finish on different days and take different lengths of time.
+    """
     planned = completed_steps if total_steps is None else total_steps
     steps = [
         {
@@ -131,8 +138,8 @@ def workflow_job(
             "name": name,
             "status": status,
             "conclusion": conclusion,
-            "started_at": "2026-08-31T14:00:00Z",
-            "completed_at": "2026-08-31T14:04:12Z",
+            "started_at": started_at,
+            "completed_at": completed_at,
             "runner_name": "GitHub Actions 2",
             "labels": ["ubuntu-latest"],
             "steps": steps,

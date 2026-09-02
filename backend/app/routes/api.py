@@ -138,6 +138,9 @@ async def list_flaky_jobs(
 ) -> list[FlakyJob]:
     """The flake leaderboard for one repo, ranked by the Wilson interval's lower bound.
 
+    Served from the daily rollup per SPEC §8, so the window is a whole number of UTC
+    days and the numbers are as current as the worker's last sweep.
+
     Both bounds and the point estimate are returned rather than the rank key alone,
     because the interval's width is what tells a reader how much to trust the rate —
     a job seen three times is not the same claim as a job seen three hundred.

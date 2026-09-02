@@ -44,6 +44,7 @@ def attempt(
     status: str = "completed",
     completed_steps: int = 14,
     total_steps: int | None = None,
+    **timestamps: str,
 ) -> dict[str, Any]:
     return payloads.workflow_job(
         job_id=job_id if job_id is not None else _job_id(name, number, run_id),
@@ -55,6 +56,7 @@ def attempt(
         head_sha=SHA,
         completed_steps=completed_steps,
         total_steps=total_steps,
+        **timestamps,
     )
 
 

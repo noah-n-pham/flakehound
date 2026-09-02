@@ -299,6 +299,9 @@ class Job(Base):
         Index("ix_jobs_signal_b", "repo_id", "workflow_id", "name", "head_sha"),
         # Query: Signal A — attempts of one job within one run, in attempt order.
         Index("ix_jobs_signal_a", "repo_id", "run_id", "name", "run_attempt"),
+        # Query: which repos the rollup sweep must recompute — the repos whose job
+        # rows moved since the last pass.
+        Index("ix_jobs_recent_activity", "updated_at"),
     )
 
 
@@ -348,7 +351,12 @@ class FlakeEvent(Base):
 
 
 class JobStatsDaily(Base):
-    """The rollup every read endpoint is served from — never raw facts (SPEC §8)."""
+    """The rollup every read endpoint is served from — never raw facts (SPEC §8).
+
+    One row per (repo, workflow, job name, UTC day). `opportunities` and `flakes`
+    are SPEC §2's two counts, so a window of these rows sums to the same flake rate
+    the raw facts give — see `app/rollup.py` for why each count is what it is.
+    """
 
     __tablename__ = "job_stats_daily"
 
@@ -365,6 +373,9 @@ class JobStatsDaily(Base):
     duration_p50_seconds: Mapped[float | None] = mapped_column(Numeric(12, 3))
     duration_p95_seconds: Mapped[float | None] = mapped_column(Numeric(12, 3))
     duration_total_seconds: Mapped[float | None] = mapped_column(Numeric(14, 3))
+    # The latest implicated job run of this day, so the leaderboard can report when a
+    # job last flaked without reading `flake_events` beside the rollup.
+    last_flake_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()

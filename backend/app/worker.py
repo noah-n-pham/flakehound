@@ -10,6 +10,7 @@ import asyncio
 import signal
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -26,6 +27,7 @@ from app.queue import (
     reap_stuck,
 )
 from app.ratelimit import RateLimitExceeded
+from app.rollup import rollup_recent
 
 log = get_logger(__name__)
 
@@ -91,16 +93,23 @@ async def run_once(sessionmaker: async_sessionmaker, batch_size: int) -> int:
 class SweepResult:
     reaped: list[int]
     failed: list[int]
+    rolled_up: list[int]
 
 
 async def sweep(sessionmaker: async_sessionmaker) -> SweepResult:
-    """Recover abandoned rows, then fail the ones that are out of attempts.
+    """Recover abandoned rows, fail the ones that are out of attempts, roll up stats.
 
-    In that order, and in one transaction: reaping returns a row to pending with
-    its spent attempt still counted, so a row whose last attempt died with its
-    worker is dead-lettered by the same pass instead of waiting out another
+    The first two in that order, and in one transaction: reaping returns a row to
+    pending with its spent attempt still counted, so a row whose last attempt died
+    with its worker is dead-lettered by the same pass instead of waiting out another
     interval as work that looks pending but can never be claimed.
+
+    The rollup rides along here rather than running per delivery because it is a
+    recompute rather than an increment, and recomputing a repo once a minute is
+    cheaper than recomputing it once per event. The cost is that a read is up to one
+    sweep behind the facts, which for a CI dashboard is not a cost at all.
     """
+    settings = get_settings()
     async with sessionmaker() as session:
         reaped = await reap_stuck(session)
         spent = await fail_exhausted(session)
@@ -109,7 +118,16 @@ async def sweep(sessionmaker: async_sessionmaker) -> SweepResult:
         log.warning("worker.reaped_stuck", queue_ids=reaped, count=len(reaped))
     if spent:
         log.warning("worker.swept_exhausted", queue_ids=spent, count=len(spent))
-    return SweepResult(reaped=reaped, failed=spent)
+
+    # Three intervals of slack, so a pass delayed or skipped by a slow one does not
+    # leave a repo's writes unrolled. Overlapping windows only mean a repo is
+    # recomputed twice, which is the whole point of the recompute being idempotent.
+    since = datetime.now(UTC) - timedelta(seconds=settings.queue_sweep_seconds * 3)
+    rolled = await rollup_recent(sessionmaker, since=since)
+    if rolled:
+        log.info("worker.rolled_up", repo_ids=[r.repo_id for r in rolled], count=len(rolled))
+
+    return SweepResult(reaped=reaped, failed=spent, rolled_up=[r.repo_id for r in rolled])
 
 
 async def run_forever(stop: asyncio.Event | None = None) -> None:

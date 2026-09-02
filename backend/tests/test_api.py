@@ -2,6 +2,7 @@
 
 from app.config import get_settings
 from app.models import Installation, Job, Repository, WorkflowRun
+from app.rollup import rollup_repository
 from app.upserts import parse_timestamp
 from tests import payloads
 from tests.helpers import deliver
@@ -130,7 +131,11 @@ async def test_healthz_stays_unauthenticated(client):
 
 
 async def seed_a_flaky_and_a_clean_job(session) -> None:
-    """Real deliveries through the worker, so the rows are the ones detection wrote."""
+    """Real deliveries through the worker, then the rollup the endpoint reads from.
+
+    The rollup is the worker's own sweep in production; here it is one call, because
+    the endpoint serves `job_stats_daily` and would otherwise have nothing to serve.
+    """
     await deliver(
         session,
         run_event(run_id=RUN_ID),
@@ -139,6 +144,7 @@ async def seed_a_flaky_and_a_clean_job(session) -> None:
         attempt(1, "success", name="stable leg"),
         attempt(2, "success", name="stable leg"),
     )
+    await rollup_repository(session, repo_id=payloads.REPO_ID)
 
 
 async def test_the_flaky_endpoint_needs_the_token(client):
