@@ -62,6 +62,14 @@ class Settings(BaseSettings):
     # Statements slower than this are logged by the worker's slow-query hook (SPEC §9).
     slow_query_ms: int = 500
 
+    # Metrics (SPEC §9). One sample a minute, as the spec asks. The window is what
+    # the ingest-lag percentiles are measured over — trailing rather than lifetime,
+    # or no amount of current slowness could move the number. Samples are pruned
+    # after a month: at ~20 series a minute they would otherwise out-grow the facts.
+    metrics_interval_seconds: float = 60.0
+    metrics_window_seconds: float = 3600.0
+    metrics_retention_days: int = 30
+
     # The two config flags SPEC §2's edge-case table asks for, at its defaults. A
     # timed-out job counts as an eligible failure; a job that completed none of its
     # steps is a dead runner rather than a flaky test and is not an opportunity.

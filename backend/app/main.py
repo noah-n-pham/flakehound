@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 from app.db import dispose_engine
 from app.logging import configure_logging
-from app.routes import api, health, webhooks
+from app.routes import api, health, internal, webhooks
 
 
 @asynccontextmanager
@@ -19,6 +19,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(webhooks.router)
     app.include_router(api.router)
+    app.include_router(internal.router)
     return app
 
 

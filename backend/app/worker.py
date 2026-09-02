@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.db import dispose_engine, get_sessionmaker
 from app.handlers import handle
 from app.logging import configure_logging, get_logger
+from app.metrics import Metric, write_snapshot
 from app.queue import (
     claim_batch,
     defer,
@@ -130,6 +131,20 @@ async def sweep(sessionmaker: async_sessionmaker) -> SweepResult:
     return SweepResult(reaped=reaped, failed=spent, rolled_up=[r.repo_id for r in rolled])
 
 
+async def snapshot_metrics(sessionmaker: async_sessionmaker) -> list[Metric]:
+    """Sample SPEC §9's counters into one minute's rows.
+
+    The worker owns this and the API does not, so the table has exactly one writer
+    and two processes can never disagree about a number. It is also the only process
+    that has a rate limiter with anything in it.
+    """
+    async with sessionmaker() as session:
+        metrics = await write_snapshot(session)
+        await session.commit()
+    log.info("worker.metrics", series=len(metrics))
+    return metrics
+
+
 async def run_forever(stop: asyncio.Event | None = None) -> None:
     settings = get_settings()
     sessionmaker = get_sessionmaker()
@@ -140,14 +155,23 @@ async def run_forever(stop: asyncio.Event | None = None) -> None:
         poll_seconds=settings.worker_poll_seconds,
         sweep_seconds=settings.queue_sweep_seconds,
         reaper_timeout_seconds=settings.reaper_timeout_seconds,
+        metrics_interval_seconds=settings.metrics_interval_seconds,
     )
 
     last_sweep = float("-inf")
+    last_metrics = float("-inf")
 
     while not stop.is_set():
         if time.monotonic() - last_sweep >= settings.queue_sweep_seconds:
             await sweep(sessionmaker)
             last_sweep = time.monotonic()
+
+        # Its own timer rather than a ride on the sweep: they happen to share an
+        # interval today, and a sample the operator can date is worth keeping
+        # independent of how often abandoned rows are reaped.
+        if time.monotonic() - last_metrics >= settings.metrics_interval_seconds:
+            await snapshot_metrics(sessionmaker)
+            last_metrics = time.monotonic()
 
         processed = await run_once(sessionmaker, settings.worker_batch_size)
         if processed == 0:

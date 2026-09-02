@@ -225,5 +225,17 @@ class RateLimiter:
         bucket.advance(self._clock.monotonic())
         return bucket.tokens
 
+    def headrooms(self) -> dict[int, float]:
+        """Headroom for every installation this process has actually called.
+
+        Deliberately not every installation in the database: a bucket that has never
+        seen a response has nothing to report but the default, and reporting a guess
+        as a measurement is worse than reporting nothing.
+        """
+        return {
+            installation_id: self.headroom(installation_id)
+            for installation_id in list(self._buckets)
+        }
+
     def retry_after(self, installation_id: int) -> float:
         return self.bucket(installation_id).wait_for_token(self._clock.monotonic())
