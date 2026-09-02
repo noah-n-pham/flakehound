@@ -12,6 +12,7 @@ export function Nav() {
         </Link>
         <div className="flex items-center gap-6 text-[13px] text-text-muted">
           <Link href="/">report</Link>
+          <Link href="/public/flaky">public board</Link>
           <Link href="/styleguide">styleguide</Link>
           <SessionControls />
         </div>

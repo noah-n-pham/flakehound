@@ -1,5 +1,6 @@
 import {
   Button,
+  InlineLink,
   LabelValueRow,
   Rule,
   SectionLabel,
@@ -173,6 +174,14 @@ export default function StyleguidePage() {
             compact secondary
           </Button>
         </div>
+      </Block>
+
+      <Block name="inline link">
+        <p className="text-[15px] leading-[1.6] text-text-muted">
+          Body copy with an <InlineLink href="/public/flaky">inline link</InlineLink>{" "}
+          in it. Monochrome leaves no colour to signal a link with, so the
+          underline is the affordance and hover strengthens it.
+        </p>
       </Block>
 
       <Block name="rule">

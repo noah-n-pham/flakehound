@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import {
+  InlineLink,
   LabelValueRow,
   SectionLabel,
   StatBlock,
@@ -81,7 +82,8 @@ function SignedOut() {
         says is yours.
       </p>
       <p className="mt-8 text-[15px] leading-[1.6] text-text-muted">
-        The public leaderboard needs no account.
+        The <InlineLink href="/public/flaky">public board</InlineLink> needs no
+        account.
       </p>
     </main>
   );

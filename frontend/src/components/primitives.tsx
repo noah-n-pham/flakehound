@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 /** Uppercase mono section label — 11px, wide tracking, faint. */
@@ -105,6 +106,28 @@ export function toneClass(tone: Tone): string {
 /** Full-column hairline. Separators are rules, never boxes. */
 export function Rule() {
   return <hr className="border-0 border-t border-border" />;
+}
+
+/**
+ * A link inside body copy. Monochrome, so the only affordance available is the
+ * underline — which is why it is a hairline in the border token rather than the
+ * text colour, and why hovering lifts the text instead of changing its hue.
+ */
+export function InlineLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="text-text underline decoration-border-strong decoration-1 underline-offset-4 transition-colors duration-150 hover:decoration-text-muted"
+    >
+      {children}
+    </Link>
+  );
 }
 
 export function Button({
