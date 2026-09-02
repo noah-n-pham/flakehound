@@ -46,7 +46,15 @@ def enqueue(
 
 def event_for(payload: dict[str, Any]) -> str:
     """The event type a payload's shape implies, the way GitHub's header and body agree."""
-    return "workflow_run" if "workflow_run" in payload else "workflow_job"
+    for key, event in (
+        ("workflow_run", "workflow_run"),
+        ("workflow_job", "workflow_job"),
+        ("repositories_added", "installation_repositories"),
+        ("repositories_removed", "installation_repositories"),
+    ):
+        if key in payload:
+            return event
+    return "installation"
 
 
 def one_session_factory(session: AsyncSession):

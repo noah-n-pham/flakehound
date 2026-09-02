@@ -109,9 +109,42 @@ async def upsert_installation(
     )
 
 
+async def set_installation_lifecycle(
+    session: AsyncSession,
+    *,
+    installation_id: int,
+    suspended_at: datetime | None,
+    deleted_at: datetime | None,
+) -> None:
+    """Write both lifecycle timestamps outright.
+
+    Both are written every time rather than merged, because the caller derives
+    them from the event's action and always knows both. That makes the write
+    last-action-wins: GitHub's installation payload carries no version to rank
+    two of them by, the way a job's `status` ranks job payloads (D-038).
+    """
+    await session.execute(
+        update(Installation)
+        .where(Installation.id == installation_id)
+        .values(suspended_at=suspended_at, deleted_at=deleted_at, updated_at=func.now())
+        .execution_options(synchronize_session=False)
+    )
+
+
 async def upsert_repository(
-    session: AsyncSession, *, installation_id: int, repository: dict[str, Any]
+    session: AsyncSession,
+    *,
+    installation_id: int,
+    repository: dict[str, Any],
+    active: bool | None = None,
 ) -> int:
+    """Upsert one repo. `active=None` leaves an existing row's flag untouched.
+
+    Only the installation events know whether a repo is still installed, so they
+    pass the flag explicitly. A `workflow_job` for a repo that was removed from
+    the install must not quietly re-activate it — that decision belongs to
+    `installation_repositories`, and a late job event is not evidence of it.
+    """
     owner = repository.get("owner") or {}
     full_name = repository.get("full_name") or ""
     stmt = insert(Repository).values(
@@ -121,6 +154,7 @@ async def upsert_repository(
         name=repository.get("name") or full_name.rpartition("/")[2],
         full_name=full_name,
         private=bool(repository.get("private", True)),
+        active=True if active is None else active,
         default_branch=repository.get("default_branch"),
     )
     await session.execute(
@@ -132,6 +166,7 @@ async def upsert_repository(
                 "name": stmt.excluded.name,
                 "full_name": stmt.excluded.full_name,
                 "private": stmt.excluded.private,
+                "active": Repository.active if active is None else stmt.excluded.active,
                 "default_branch": func.coalesce(
                     stmt.excluded.default_branch, Repository.default_branch
                 ),
@@ -140,6 +175,48 @@ async def upsert_repository(
         )
     )
     return int(repository["id"])
+
+
+async def set_repositories_active(
+    session: AsyncSession, *, repo_ids: list[int], active: bool
+) -> list[int]:
+    """Flip the active flag on repos we already know about.
+
+    Nothing is deleted. A removed repo keeps its jobs, runs, and flake events —
+    they are still true, the repo is simply no longer being watched, and rows
+    elsewhere reference it by foreign key.
+    """
+    if not repo_ids:
+        return []
+    changed = (
+        await session.execute(
+            update(Repository)
+            .where(Repository.id.in_(repo_ids), Repository.active.is_not(active))
+            .values(active=active, updated_at=func.now())
+            .returning(Repository.id)
+            .execution_options(synchronize_session=False)
+        )
+    ).scalars()
+    return sorted(changed)
+
+
+async def set_installation_repositories_active(
+    session: AsyncSession, *, installation_id: int, active: bool
+) -> list[int]:
+    """The same, for every repo of one installation — an install or uninstall."""
+    changed = (
+        await session.execute(
+            update(Repository)
+            .where(
+                Repository.installation_id == installation_id,
+                Repository.active.is_not(active),
+            )
+            .values(active=active, updated_at=func.now())
+            .returning(Repository.id)
+            .execution_options(synchronize_session=False)
+        )
+    ).scalars()
+    return sorted(changed)
 
 
 async def upsert_workflow(

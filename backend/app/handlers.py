@@ -1,5 +1,6 @@
 """Turning one queue row into fact rows."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,9 @@ from app.upserts import (
     parse_timestamp,
     propagate_workflow_id,
     run_workflow_id,
+    set_installation_lifecycle,
+    set_installation_repositories_active,
+    set_repositories_active,
     upsert_installation,
     upsert_job,
     upsert_repository,
@@ -114,9 +118,113 @@ async def handle_workflow_run(session: AsyncSession, payload: dict[str, Any]) ->
             await evaluate_job(session, repo_id=repo_id, run_id=run_id, job_name=job_name)
 
 
+async def handle_installation(session: AsyncSession, payload: dict[str, Any]) -> None:
+    """install, uninstall, suspend (SPEC §7).
+
+    The account fields arrive here and nowhere else: every other event carries
+    only `installation.id`, which is why an installation row can exist as a stub
+    long before this handler ever runs.
+    """
+    installation = payload.get("installation") or {}
+    installation_id = installation.get("id")
+    if not installation_id:
+        raise ValueError("installation payload has no installation")
+
+    account = installation.get("account") or {}
+    await upsert_installation(
+        session,
+        installation_id=installation_id,
+        account_id=account.get("id"),
+        account_login=account.get("login"),
+        account_type=account.get("type"),
+    )
+
+    action = payload.get("action")
+    suspended_at = parse_timestamp(installation.get("suspended_at"))
+    if action == "suspend":
+        # The payload should carry the moment, but the action is the fact; falling
+        # back to now() keeps a suspended install from looking live.
+        suspended_at = suspended_at or datetime.now(UTC)
+    elif action == "unsuspend":
+        suspended_at = None
+
+    deleted = action == "deleted"
+    await set_installation_lifecycle(
+        session,
+        installation_id=installation_id,
+        suspended_at=suspended_at,
+        deleted_at=datetime.now(UTC) if deleted else None,
+    )
+
+    # An uninstall deactivates every repo of the install; nothing is deleted,
+    # because the history it collected is still true.
+    if deleted:
+        changed = await set_installation_repositories_active(
+            session, installation_id=installation_id, active=False
+        )
+    else:
+        for repository in payload.get("repositories") or []:
+            if repository.get("id"):
+                await upsert_repository(
+                    session,
+                    installation_id=installation_id,
+                    repository=repository,
+                    active=True,
+                )
+        changed = []
+
+    log.info(
+        "worker.installation",
+        installation_id=installation_id,
+        action=action,
+        deactivated=len(changed),
+    )
+
+
+async def handle_installation_repositories(
+    session: AsyncSession, payload: dict[str, Any]
+) -> None:
+    """Repos added to or removed from an existing install (SPEC §7)."""
+    installation = payload.get("installation") or {}
+    installation_id = installation.get("id")
+    if not installation_id:
+        raise ValueError("installation_repositories payload has no installation")
+
+    account = installation.get("account") or {}
+    await upsert_installation(
+        session,
+        installation_id=installation_id,
+        account_id=account.get("id"),
+        account_login=account.get("login"),
+        account_type=account.get("type"),
+    )
+
+    for repository in payload.get("repositories_added") or []:
+        if repository.get("id"):
+            await upsert_repository(
+                session,
+                installation_id=installation_id,
+                repository=repository,
+                active=True,
+            )
+
+    removed = [r["id"] for r in payload.get("repositories_removed") or [] if r.get("id")]
+    await set_repositories_active(session, repo_ids=removed, active=False)
+
+    log.info(
+        "worker.installation_repositories",
+        installation_id=installation_id,
+        action=payload.get("action"),
+        added=len(payload.get("repositories_added") or []),
+        removed=len(removed),
+    )
+
+
 HANDLERS = {
     "workflow_job": handle_workflow_job,
     "workflow_run": handle_workflow_run,
+    "installation": handle_installation,
+    "installation_repositories": handle_installation_repositories,
 }
 
 

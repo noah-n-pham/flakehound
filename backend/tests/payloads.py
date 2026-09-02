@@ -26,6 +26,72 @@ def repository(private: bool = False) -> dict[str, Any]:
     }
 
 
+def minimal_repository(repo_id: int = REPO_ID, name: str = "flakehound") -> dict[str, Any]:
+    """What an installation event carries: no owner object and no default branch.
+
+    GitHub calls this a "minimal repository" and it is why `upsert_repository`
+    has to fall back to splitting `full_name` for the owner.
+    """
+    return {
+        "id": repo_id,
+        "name": name,
+        "full_name": f"khoi/{name}",
+        "private": False,
+    }
+
+
+def installation_event(
+    *,
+    action: str = "created",
+    installation_id: int = INSTALLATION_ID,
+    account_login: str = "khoi",
+    account_type: str = "User",
+    suspended_at: str | None = None,
+    repositories: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """install, uninstall, suspend, unsuspend.
+
+    The account block appears here and in no other event, which is what makes
+    this the only handler that can fill in a stubbed installation row.
+    """
+    return {
+        "action": action,
+        "installation": {
+            "id": installation_id,
+            "account": {"id": 41_000_000, "login": account_login, "type": account_type},
+            "repository_selection": "selected",
+            "suspended_at": suspended_at,
+            "created_at": "2026-08-01T10:00:00Z",
+            "updated_at": "2026-08-31T10:00:00Z",
+        },
+        "repositories": (
+            [minimal_repository()] if repositories is None else repositories
+        ),
+        "sender": {"id": 41_000_000, "login": account_login},
+    }
+
+
+def installation_repositories_event(
+    *,
+    action: str = "added",
+    installation_id: int = INSTALLATION_ID,
+    added: list[dict[str, Any]] | None = None,
+    removed: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "action": action,
+        "installation": {
+            "id": installation_id,
+            "account": {"id": 41_000_000, "login": "khoi", "type": "User"},
+            "repository_selection": "selected",
+        },
+        "repository_selection": "selected",
+        "repositories_added": added or [],
+        "repositories_removed": removed or [],
+        "sender": {"id": 41_000_000, "login": "khoi"},
+    }
+
+
 def workflow_job(
     *,
     job_id: int = JOB_ID,
