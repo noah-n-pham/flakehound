@@ -2,10 +2,25 @@
 
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import Base
 from app.models import EventQueue
 from app.worker import run_once
+
+
+async def truncate_all(session: AsyncSession) -> None:
+    """Empty every table.
+
+    Only a test that commits for real needs this. The `db_session` fixture rolls
+    its work back, but a test that runs concurrent workers cannot — separate
+    connections have to see each other's rows — and anything it leaves behind is
+    visible to every test that follows.
+    """
+    tables = ", ".join(table.name for table in Base.metadata.sorted_tables)
+    await session.execute(text(f"TRUNCATE {tables} CASCADE"))
+    await session.commit()
 
 
 def enqueue(
