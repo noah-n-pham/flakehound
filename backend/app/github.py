@@ -20,6 +20,7 @@ import jwt
 
 from app.config import Settings, get_settings
 from app.logging import get_logger
+from app.ratelimit import RateLimiter, RateLimitExceeded
 
 log = get_logger(__name__)
 
@@ -34,6 +35,11 @@ JWT_SKEW = timedelta(minutes=1)
 RENEW_BEFORE_EXPIRY = timedelta(minutes=5)
 
 API_VERSION = "2022-11-28"
+
+# A rate-limited response is retried, because the retry waits out the block the
+# response itself declared rather than hammering. Three is enough to ride out a
+# secondary limit; a primary limit will exceed the maximum wait long before this.
+RATE_LIMIT_ATTEMPTS = 3
 
 
 class GitHubAuthError(RuntimeError):
@@ -54,9 +60,42 @@ _tokens: dict[int, InstallationToken] = {}
 # so contention is theoretical, and a single lock cannot deadlock or leak keys.
 _lock = asyncio.Lock()
 
+# The limiter has to outlive a request to be worth anything — its whole state is
+# what the last response said — so it is module-level beside the token cache.
+_limiter: RateLimiter | None = None
+_client: httpx.AsyncClient | None = None
+
+
+def get_limiter() -> RateLimiter:
+    global _limiter
+    if _limiter is None:
+        _limiter = RateLimiter(
+            max_wait_seconds=get_settings().github_rate_limit_max_wait_seconds
+        )
+    return _limiter
+
+
+def get_api_client() -> httpx.AsyncClient:
+    """One pooled client for the API, unlike the token exchange's throwaway.
+
+    A backfill is hundreds of sequential requests to one host, so the TLS
+    handshake is worth doing once.
+    """
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(timeout=30.0)
+    return _client
+
 
 def reset_token_cache() -> None:
     _tokens.clear()
+
+
+def reset_api_state() -> None:
+    """Drop the limiter and the pooled client. For tests."""
+    global _limiter, _client
+    _limiter = None
+    _client = None
 
 
 def _credentials(settings: Settings) -> tuple[int, str]:
@@ -149,3 +188,70 @@ async def installation_token(installation_id: int) -> str:
         fresh = await fetch_installation_token(installation_id)
         _tokens[installation_id] = fresh
         return fresh.token
+
+
+def _is_rate_limited(response: httpx.Response) -> bool:
+    """Tell a rate limit apart from an ordinary refusal.
+
+    GitHub answers both a spent budget and a missing permission with 403, and
+    the difference is entirely in the headers: the primary limit says
+    `x-ratelimit-remaining: 0`, the secondary one sends `retry-after`. A 403 that
+    says neither is a permissions problem and retrying it is pointless.
+    """
+    if response.status_code not in (403, 429):
+        return False
+    headers = response.headers
+    if "retry-after" in headers:
+        return True
+    remaining = headers.get("x-ratelimit-remaining")
+    return remaining is not None and remaining.strip() == "0"
+
+
+async def api_request(
+    installation_id: int,
+    method: str,
+    path: str,
+    *,
+    params: dict[str, object] | None = None,
+    limiter: RateLimiter | None = None,
+) -> httpx.Response:
+    """One GitHub API call as this installation, paced by its own token bucket.
+
+    Every read of a repository's runs and jobs goes through here, so the limiter
+    sees every response and nothing can spend the budget behind its back. A
+    rate-limited response is retried, and the retry is what waits: `observe` has
+    already written the block into the bucket, so the next `acquire` sleeps
+    exactly as long as GitHub asked for — or refuses, if that is longer than a
+    claimed queue row may be held.
+    """
+    settings = get_settings()
+    limiter = limiter or get_limiter()
+    client = get_api_client()
+    url = path if path.startswith("http") else f"{settings.github_api_base_url}{path}"
+
+    for attempt in range(1, RATE_LIMIT_ATTEMPTS + 1):
+        token = await installation_token(installation_id)
+        await limiter.acquire(installation_id)
+        response = await client.request(
+            method,
+            url,
+            params=params,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": API_VERSION,
+            },
+        )
+        limiter.observe(installation_id, response.headers)
+        if not _is_rate_limited(response):
+            return response
+        log.warning(
+            "github.rate_limited",
+            installation_id=installation_id,
+            status=response.status_code,
+            attempt=attempt,
+            retry_after=response.headers.get("retry-after"),
+            reset=response.headers.get("x-ratelimit-reset"),
+        )
+
+    raise RateLimitExceeded(installation_id, limiter.retry_after(installation_id))

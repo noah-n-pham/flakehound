@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # Manager, where there is no file to point at.
     github_app_private_key_path: str | None = None
     github_api_base_url: str = "https://api.github.com"
+    # How long a rate-limited request may sleep before the wait is handed back
+    # to the queue instead. It must stay well under `reaper_timeout_seconds`, or
+    # a worker sleeping out a limit looks dead and its row is given away.
+    github_rate_limit_max_wait_seconds: float = 60.0
 
     # Statements slower than this are logged by the worker's slow-query hook (SPEC §9).
     slow_query_ms: int = 500
