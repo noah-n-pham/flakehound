@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     worker_batch_size: int = 10
     worker_poll_seconds: float = 1.0
 
+    # Retry (SPEC §5). The delay before attempt n is base * 2^(n-1), capped, so
+    # the five attempts of the default ceiling span minutes rather than one
+    # second — long enough to outlive a Postgres failover or a GitHub blip.
+    retry_backoff_seconds: float = 5.0
+    retry_backoff_max_seconds: float = 300.0
+    # How often the worker sweeps for rows that are out of attempts.
+    queue_sweep_seconds: float = 60.0
+
     @model_validator(mode="after")
     def _assemble_database_url(self) -> "Settings":
         if self.db_host is None:

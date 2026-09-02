@@ -8,6 +8,7 @@ redelivery storm.
 
 import asyncio
 import signal
+import time
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -15,7 +16,7 @@ from app.config import get_settings
 from app.db import dispose_engine, get_sessionmaker
 from app.handlers import handle
 from app.logging import configure_logging, get_logger
-from app.queue import claim_batch, mark_done, mark_for_retry
+from app.queue import claim_batch, fail_exhausted, mark_done, mark_for_retry
 
 log = get_logger(__name__)
 
@@ -40,18 +41,31 @@ async def run_once(sessionmaker: async_sessionmaker, batch_size: int) -> int:
                 log.info("worker.processed", queue_id=job.id, github_event=job.event)
             except Exception as exc:
                 await session.rollback()
+                async with sessionmaker() as retry_session:
+                    dead = await mark_for_retry(
+                        retry_session, job, f"{type(exc).__name__}: {exc}"
+                    )
+                    await retry_session.commit()
                 log.error(
-                    "worker.failed",
+                    "worker.dead_lettered" if dead else "worker.failed",
                     queue_id=job.id,
                     github_event=job.event,
                     attempts=job.attempts,
+                    max_attempts=job.max_attempts,
                     error=str(exc),
                 )
-                async with sessionmaker() as retry_session:
-                    await mark_for_retry(retry_session, job.id, f"{type(exc).__name__}: {exc}")
-                    await retry_session.commit()
 
     return len(claimed)
+
+
+async def sweep(sessionmaker: async_sessionmaker) -> list[int]:
+    """Mark rows that are out of attempts `failed`, so they stop being invisible."""
+    async with sessionmaker() as session:
+        spent = await fail_exhausted(session)
+        await session.commit()
+    if spent:
+        log.warning("worker.swept_exhausted", queue_ids=spent, count=len(spent))
+    return spent
 
 
 async def run_forever(stop: asyncio.Event | None = None) -> None:
@@ -64,7 +78,13 @@ async def run_forever(stop: asyncio.Event | None = None) -> None:
         poll_seconds=settings.worker_poll_seconds,
     )
 
+    last_sweep = float("-inf")
+
     while not stop.is_set():
+        if time.monotonic() - last_sweep >= settings.queue_sweep_seconds:
+            await sweep(sessionmaker)
+            last_sweep = time.monotonic()
+
         processed = await run_once(sessionmaker, settings.worker_batch_size)
         if processed == 0:
             # Nothing to do. At 0.2-0.5 events/s this is the normal state.

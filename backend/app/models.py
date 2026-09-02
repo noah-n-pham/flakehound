@@ -192,6 +192,10 @@ class EventQueue(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("5"))
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when an attempt fails, so the retry waits instead of burning the whole
+    # attempt ceiling inside one second on a failure that is merely transient.
+    # NULL means claimable now, which is what every live row is.
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at_column()
@@ -199,8 +203,10 @@ class EventQueue(Base):
 
     __table_args__ = (
         CheckConstraint(_in("status", QUEUE_STATUSES), name="status"),
-        # Query: claim a batch — pending, attempts left, priority then age,
-        # FOR UPDATE SKIP LOCKED.
+        # Query: claim a batch — pending, attempts left, backoff elapsed, priority
+        # then age, FOR UPDATE SKIP LOCKED. The backoff test stays out of the
+        # predicate because `now()` is not immutable; it filters the rows this
+        # index already narrowed to.
         Index(
             "ix_event_queue_dequeue",
             "priority",

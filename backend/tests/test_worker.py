@@ -163,14 +163,16 @@ async def test_a_failing_handler_returns_the_row_to_pending_with_its_error(db_se
 
 
 async def test_marking_done_and_marking_for_retry(db_session):
-    row = enqueue(db_session, payloads.workflow_job())
+    enqueue(db_session, payloads.workflow_job())
     await db_session.flush()
+    claimed = (await claim_batch(db_session, limit=1))[0]
 
-    await mark_for_retry(db_session, row.id, "boom")
+    await mark_for_retry(db_session, claimed, "boom")
+    row = (await db_session.execute(select(EventQueue))).scalar_one()
     await db_session.refresh(row)
     assert (row.status, row.last_error) == ("pending", "boom")
 
-    await mark_done(db_session, row.id)
+    await mark_done(db_session, claimed.id)
     await db_session.refresh(row)
     assert row.status == "done"
     assert row.locked_at is None

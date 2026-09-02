@@ -15,9 +15,15 @@ def enqueue(
     event: str | None = "workflow_job",
     priority: int = 0,
     attempts: int = 0,
+    max_attempts: int = 5,
 ) -> EventQueue:
     row = EventQueue(
-        job_type="webhook", event=event, payload=payload, priority=priority, attempts=attempts
+        job_type="webhook",
+        event=event,
+        payload=payload,
+        priority=priority,
+        attempts=attempts,
+        max_attempts=max_attempts,
     )
     session.add(row)
     return row
