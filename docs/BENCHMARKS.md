@@ -174,6 +174,11 @@ whole six-call page load as the BFF would see it; the rest are per-endpoint p99s
 | 40 | 251.8 | 35 | 2,263 | 4,153 | 5,073 | 0 |
 | 80 | 211.3 | 1,188 | 13,723 | 24,233 | 27,255 | 0 |
 
+**The last two rows are one sample each of a plateau that does not repeat.** Six
+later runs of the 40 row, below, spread from 157 to 215 req/s — ±30% — so read them
+as "it is saturated and degrading" and not as numbers. Everything at 20 and below
+reproduced within a few percent.
+
 Per endpoint, at the sustainable rate (10 pages/s) and at the first plateau where
 the tail breaks (20 pages/s):
 
@@ -244,7 +249,8 @@ pooled connections" and "waiting for a Postgres that is genuinely busy" both fit
 and at 337% CPU on sequential scans the second is now at least as plausible as the
 first. **The experiment that separates them is to add the missing index and re-run
 this ladder unchanged**: if the ceiling moves, it was the work; if only the tail
-flattens, it was the queue.
+flattens, it was the queue. That experiment was run — see below — and neither
+happened, for a reason the design of the experiment had missed.
 
 ### What this means for production
 
@@ -254,10 +260,82 @@ with the repo's history on three endpoints and stays flat on four**, and the fou
 flat ones are the rollup's. That is the argument for the rollup restated as a
 measurement rather than a design claim.
 
+### Scenario 2a — the same ladder, with the missing index
+
+`ix_jobs_repo_recent` on `jobs (repo_id, started_at DESC NULLS LAST, id DESC)`,
+migration `b8e5309fa14c`. The ordering is spelled out because a b-tree only satisfies
+a sort it matches exactly, and plain `DESC` would mean NULLS FIRST while the query
+asks for NULLS LAST. Nothing else changed, and the ladder was re-run unmodified.
+
+**The query did exactly what it should. The system did not move at all.**
+
+| | before | after |
+|---|---|---|
+| the query alone, `EXPLAIN ANALYZE` | 45.4 ms, `Parallel Seq Scan`, 60,822 rows read to return 50 | **1.3 ms**, `Index Scan`, 50 rows read — 0.20 ms once its pages are cached |
+| `/api/repos/{id}/jobs` p50 in a loaded page, 10 pages/s | 14.1 ms | 7.7 ms |
+| `/api/repos/{id}/jobs` p99, 10 pages/s | 69.9 ms | 58.8 ms |
+| page p99, 10 pages/s | 196 ms | 217 ms |
+| achieved req/s, 10 pages/s | 69.8 | 70.1 |
+| page p99, 20 pages/s | 3,208 ms | 3,217 ms |
+| achieved req/s, 20 pages/s | 136.3 | 139.4 |
+
+**A 35× faster query bought a 2× faster endpoint and a 0× faster page.** That gap is
+the finding. In isolation the scan was 45 ms of the endpoint's cost; inside a page at
+70 req/s the endpoint only fell from 14.1 ms to 7.7 ms, because most of what it was
+spending was never the query. The ceiling is where it was — still sustainable at 10
+page loads/s, still breaking in the tail between 10 and 20.
+
+### Why this could not settle the pool question, which is the useful part
+
+**The experiment was designed before the query plans were known, and it removed the
+cheapest of the three scans.** `/api/repos` still nested-loops all 60,822 rows for one
+count, and the timeline still hash-aggregates 60,326 groups and spills to disk. Those
+cost 25 ms and 104 ms; the one that got fixed cost 45 ms. Removing a third of the work
+and finding the ceiling unmoved is consistent with "still bound by the remaining work"
+*and* with "never bound by the work at all", which is precisely the two things it was
+supposed to tell apart.
+
+What still points at the pool is a detail in scenario 2's own per-endpoint table.
+**At saturation all seven endpoints converge on the same latency.** At 40 pages/s
+before the index they read 403, 510, 523, 517, 544, 509 and 502 ms — including
+`/public/flaky`, which costs 2.6 ms when idle and reads a five-row table. A fixed
+delay applied equally to a 2.6 ms query and a 55 ms one is a queue in front of the
+work, not the work. A merely busy Postgres would still return the cheap query
+cheaply; ten pooled connections make everything wait the same.
+
+**The decisive experiment is now the pool itself**, not another index: raise
+`pool_size` in `app/db.py` from 5+5 and re-run this ladder. That is one variable, and
+unlike an index it cannot be confounded by which queries happen to be in the mix.
+
+### The saturated plateaus are not a measurement, and here is the proof
+
+The first re-run appeared to show throughput at 40 pages/s falling from 252 to 182
+req/s — a 28% regression from adding an index, which is not a thing an index does. So
+the plateau was run six times, dropping and restoring the index around the middle
+pair, rather than published:
+
+| | run | req/s | page p50 | page p99 |
+|---|---|---|---|---|
+| index present | A1 | 156.8 | 9,769 | 20,750 |
+| index present | A2 | 165.1 | 10,042 | 19,520 |
+| **index dropped** | B1 | 172.7 | 7,706 | 18,248 |
+| **index dropped** | B2 | 170.8 | 9,490 | 18,229 |
+| index restored | A3 | 214.9 | 4,552 | 10,502 |
+| index restored | A4 | 201.2 | 5,952 | 12,490 |
+
+**Both "without" runs land inside the spread of the four "with" runs**, and the
+highest two came last, which is drift over the sequence rather than any effect of the
+index. Run-to-run variation at 40 pages/s is ±30% and swamps what is being measured;
+the apparent regression was noise, and so was the apparent 252. Above the ceiling this
+box measures its own scheduler. The reproducible region is 20 pages/s and below.
+
 ---
 
 ## Not yet measured
 
+- **The pool experiment.** Raise `pool_size`/`max_overflow` in `app/db.py` and re-run
+  the read ladder. It is the one variable that separates a queue in front of the
+  database from a database that is genuinely busy, and both scenarios now end on it.
 - **`/public/flaky` against a board with rows in it.** Both repos in the local
   database are private, so the public board legitimately returned `[]` and its
   numbers above are a floor: real HTTP and routing cost, no result rows. The

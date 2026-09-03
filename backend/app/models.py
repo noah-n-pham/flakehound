@@ -299,6 +299,18 @@ class Job(Base):
         Index("ix_jobs_signal_b", "repo_id", "workflow_id", "name", "head_sha"),
         # Query: Signal A — attempts of one job within one run, in attempt order.
         Index("ix_jobs_signal_a", "repo_id", "run_id", "name", "run_attempt"),
+        # Query: `/api/repos/{id}/jobs` — one repo's newest executions.
+        #
+        # The ordering is spelled out because a b-tree only satisfies a sort it
+        # matches exactly, and `DESC` alone would put NULLS FIRST. Without this the
+        # endpoint sequentially scanned the repo's whole job table to return fifty
+        # rows: 45 ms against 60k rows, and linear in history from there.
+        Index(
+            "ix_jobs_repo_recent",
+            "repo_id",
+            text("started_at DESC NULLS LAST"),
+            text("id DESC"),
+        ),
         # Query: which repos the rollup sweep must recompute — the repos whose job
         # rows moved since the last pass.
         Index("ix_jobs_recent_activity", "updated_at"),
