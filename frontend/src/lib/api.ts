@@ -81,6 +81,33 @@ export type CommitHistory = {
   attempts: HistoryAttempt[];
 };
 
+/**
+ * One slice of a repo's Actions time. `job_name` is null when grouping by workflow.
+ *
+ * `seconds` is wall clock and **not a bill** — GitHub rounds each job up to the minute
+ * and multiplies by a runner factor, neither of which the Actions API exposes. `share`
+ * is computed by the API so two pages cannot disagree about the denominator.
+ */
+export type MinutesRow = {
+  workflow_id: number | null;
+  workflow_name: string | null;
+  job_name: string | null;
+  runs: number;
+  seconds: number;
+  share: number;
+  mean_seconds: number | null;
+};
+
+/** One day of one job's duration. A day it did not run is absent, not zero. */
+export type DurationPoint = {
+  day: string;
+  workflow_id: number | null;
+  runs: number;
+  p50_seconds: number | null;
+  p95_seconds: number | null;
+  total_seconds: number;
+};
+
 /** The same row on the public board, which spans repos and so must name one. */
 export type PublicFlakyRow = FlakyRow & {
   repo_id: number;
@@ -167,6 +194,43 @@ export function listJobHistory(
   if (workflowId !== null) query.set("workflow_id", `${workflowId}`);
   return apiGet<CommitHistory[]>(
     `/api/repos/${repoId}/jobs/${encodeURIComponent(jobName)}/history?${query}`,
+    authorizedRepoIds,
+  );
+}
+
+/**
+ * Where the repo's Actions time went, biggest consumer first. `group_by=job` groups on
+ * the workflow too, because a job name is only unique inside its workflow.
+ */
+export function listMinutes(
+  repoId: number,
+  authorizedRepoIds: number[],
+  groupBy: "workflow" | "job" = "workflow",
+  windowDays = 30,
+  limit = 50,
+): Promise<MinutesRow[]> {
+  return apiGet<MinutesRow[]>(
+    `/api/repos/${repoId}/minutes?group_by=${groupBy}&window_days=${windowDays}&limit=${limit}`,
+    authorizedRepoIds,
+  );
+}
+
+/**
+ * One job's p50 and p95 per UTC day, oldest first. The series has gaps: percentiles
+ * cannot be re-aggregated, so the API returns the rollup's days verbatim rather than
+ * inventing a value for a day the job did not run.
+ */
+export function listDurationTrend(
+  repoId: number,
+  jobName: string,
+  authorizedRepoIds: number[],
+  workflowId: number | null = null,
+  windowDays = 30,
+): Promise<DurationPoint[]> {
+  const query = new URLSearchParams({ window_days: `${windowDays}` });
+  if (workflowId !== null) query.set("workflow_id", `${workflowId}`);
+  return apiGet<DurationPoint[]>(
+    `/api/repos/${repoId}/jobs/${encodeURIComponent(jobName)}/duration?${query}`,
     authorizedRepoIds,
   );
 }

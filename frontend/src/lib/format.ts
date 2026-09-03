@@ -40,9 +40,38 @@ export function formatUtcCompact(iso: string | null): string {
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 }
 
+/**
+ * A length of time, coarsening as it grows: seconds, then minutes and seconds, then
+ * hours and minutes. One function rather than a second one for totals, because a job
+ * duration and a month of them are the same quantity at different sizes.
+ */
 export function formatDuration(seconds: number | null): string {
   if (seconds === null) return "—";
   if (seconds < 60) return `${Math.round(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ${Math.round(seconds % 60)}s`;
+  if (seconds < 3600) {
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m ${Math.round(seconds % 60)}s`;
+  }
+  const hours = Math.floor(seconds / 3600);
+  return `${hours}h ${Math.round((seconds % 3600) / 60)}m`;
+}
+
+/** A UTC day as `Aug 30`, for a chart axis where the year is already established. */
+export function formatDayShort(iso: string): string {
+  const [, month, day] = iso.split("-");
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  return `${months[Number(month) - 1]} ${Number(day)}`;
 }

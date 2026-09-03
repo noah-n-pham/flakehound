@@ -10,10 +10,12 @@ import {
   Rule,
   Section,
   SectionLabel,
+  ShareBar,
   StatBlock,
   Switcher,
   Table,
   Timeline,
+  TrendChart,
   TwoToneHeading,
 } from "@/components/primitives";
 
@@ -201,6 +203,88 @@ export default function StyleguidePage() {
                   <span>2.4–4.5</span>
                 </span>
               ),
+            },
+          ]}
+        />
+      </Section>
+
+      <Section label="share bar">
+        <Body className="mb-8">
+          The same 88px track as the interval bar, with one magnitude from zero instead
+          of two ends and a point — a share has nothing to estimate, so the bar is the
+          number. The scale is the largest share on the page, not 100%, or a table whose
+          biggest slice is 12% would draw four bars all hugging the left edge.
+        </Body>
+        <Table
+          columns={[
+            { key: "workflow", header: "workflow" },
+            { key: "total", header: "total", numeric: true },
+            { key: "share", header: "share", numeric: true },
+          ]}
+          rows={[
+            {
+              workflow: "ci",
+              total: "4h 12m",
+              share: (
+                <span className="inline-flex items-center gap-3">
+                  <ShareBar value={0.62} max={0.62} />
+                  <span>62.0%</span>
+                </span>
+              ),
+            },
+            {
+              workflow: "e2e",
+              total: "1h 58m",
+              share: (
+                <span className="inline-flex items-center gap-3">
+                  <ShareBar value={0.29} max={0.62} />
+                  <span>29.0%</span>
+                </span>
+              ),
+            },
+            {
+              workflow: "deploy",
+              total: "36m 20s",
+              share: (
+                <span className="inline-flex items-center gap-3">
+                  <ShareBar value={0.09} max={0.62} />
+                  <span>9.0%</span>
+                </span>
+              ),
+            },
+          ]}
+        />
+      </Section>
+
+      <Section label="trend chart">
+        <Body className="mb-8">
+          Two per-day percentiles over a window, with no gridlines, no axis ticks and no
+          legend box — the scale is stated once above the plot and the ends of the x axis
+          are named. The gap in the middle is a day with no observation, drawn as a gap
+          rather than bridged or read as zero. It is an inline SVG in a server component:
+          thirty numbers that never change do not need a charting library in the browser.
+        </Body>
+        <TrendChart
+          max={420}
+          peakLabel="p95 peaks at 7m 0s · scale starts at zero"
+          xLabels={["Aug 2", "Aug 31"]}
+          series={[
+            {
+              name: "p95",
+              emphasis: true,
+              lastLabel: "5m 30s",
+              values: [
+                180, 200, 240, 220, 260, 300, 280, null, null, 340, 360, 320, 400, 420,
+                380, 360, 340, 330, 320, 330,
+              ],
+            },
+            {
+              name: "p50",
+              lastLabel: "2m 40s",
+              values: [
+                90, 100, 110, 105, 120, 140, 130, null, null, 150, 160, 150, 170, 180,
+                170, 165, 160, 158, 155, 160,
+              ],
             },
           ]}
         />

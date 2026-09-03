@@ -11,7 +11,7 @@ third that has to be remembered rather than enforced:
   dependency supplies the ids; it cannot make a query use them.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -24,6 +24,7 @@ from app.db import session_scope
 from app.history import job_history
 from app.models import Job, Repository
 from app.stats import flaky_jobs
+from app.usage import GroupBy, duration_trend, minutes_attribution
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_internal_token)])
 
@@ -93,6 +94,33 @@ class FlakyJob(BaseModel):
     flake_rate: float | None
     wilson_lower: float | None
     wilson_upper: float | None
+
+
+class MinutesRow(BaseModel):
+    """One slice of a repo's Actions time. `job_name` is null when grouping by workflow.
+
+    `seconds` is wall clock, not a bill: GitHub rounds each job up to the minute and
+    multiplies by a runner factor, and none of that is derivable from the Actions API.
+    """
+
+    workflow_id: int | None
+    workflow_name: str | None
+    job_name: str | None
+    runs: int
+    seconds: float
+    share: float
+    mean_seconds: float | None
+
+
+class DurationPoint(BaseModel):
+    """One day of one job's duration. Both percentiles are null with no finished runs."""
+
+    day: date
+    workflow_id: int | None
+    runs: int
+    p50_seconds: float | None
+    p95_seconds: float | None
+    total_seconds: float
 
 
 async def _require_repo(session: AsyncSession, repo_id: int, authorized: list[int]) -> None:
@@ -277,3 +305,59 @@ async def list_flaky_jobs(
         )
         for job in board
     ]
+
+
+@router.get("/repos/{repo_id}/minutes")
+async def minutes_by_group(
+    session: SessionDep,
+    authorized: AuthorizedRepos,
+    repo_id: Annotated[int, Path(description="GitHub's repo id")],
+    group_by: Annotated[GroupBy, Query()] = "workflow",
+    window_days: Annotated[int, Query(ge=1, le=365)] = 30,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[MinutesRow]:
+    """Where the repo's Actions time went, biggest consumer first.
+
+    `group_by=job` groups on `(workflow_id, job_name)` rather than the name alone,
+    because a job name is only unique inside its workflow.
+
+    A mean per run rather than a median: the rollup stores a percentile per day and
+    percentiles do not sum, so a window-wide p50 is not recoverable from them. The
+    per-day percentiles are what `/duration` returns.
+    """
+    await _require_repo(session, repo_id, authorized)
+
+    rows = await minutes_attribution(
+        session,
+        repo_id=repo_id,
+        group_by=group_by,
+        window_days=window_days,
+        limit=limit,
+    )
+    return [MinutesRow(**vars(row)) for row in rows]
+
+
+@router.get("/repos/{repo_id}/jobs/{job_name:path}/duration")
+async def job_duration_trend(
+    session: SessionDep,
+    authorized: AuthorizedRepos,
+    repo_id: Annotated[int, Path(description="GitHub's repo id")],
+    job_name: Annotated[str, Path(description="the job name, whole, matrix values included")],
+    workflow_id: Annotated[int | None, Query()] = None,
+    window_days: Annotated[int, Query(ge=1, le=365)] = 30,
+) -> list[DurationPoint]:
+    """One job's p50 and p95 per UTC day, oldest first — the rollup's rows verbatim.
+
+    A day the job did not finish anything is absent rather than zero, so the series
+    has gaps and a caller must draw them as gaps.
+    """
+    await _require_repo(session, repo_id, authorized)
+
+    trend = await duration_trend(
+        session,
+        repo_id=repo_id,
+        job_name=job_name,
+        workflow_id=workflow_id,
+        window_days=window_days,
+    )
+    return [DurationPoint(**vars(point)) for point in trend]

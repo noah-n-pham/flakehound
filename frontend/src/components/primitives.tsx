@@ -213,15 +213,54 @@ export function toneClass(tone: Tone): string {
 }
 
 /**
- * A confidence interval drawn to scale: a hairline track, the interval as a faint
- * span across it, the point estimate as a bright tick inside the span. Beside the
- * printed range it answers the question the numbers make you do arithmetic for —
- * how wide is this, next to the row above it.
+ * The one bar geometry in the app: an 88px hairline track, a faint span between two
+ * values, and an optional bright tick. `IntervalBar` and `ShareBar` are two meanings
+ * of it, not two implementations — the second version of this was the thing worth
+ * avoiding, so the semantics live in the wrappers and the arithmetic lives here.
  *
- * `max` is the top of the scale and belongs to the *page*, not the row: every bar in
- * a table has to share one scale or the widths compare nothing. The printed range
- * next to it is what carries the absolute values, so the bar never has to be read
- * off an axis it does not have.
+ * `max` is the top of the scale and belongs to the *page*, never the row: every bar in
+ * one table has to share a scale or the widths compare nothing.
+ */
+function Track({
+  from,
+  to,
+  tick,
+  max,
+}: {
+  from: number;
+  to: number;
+  tick?: number | null;
+  max: number;
+}) {
+  const scale = max > 0 ? max : 1;
+  const position = (value: number) => Math.min(Math.max(value / scale, 0), 1) * 100;
+  const left = position(from);
+  // A zero-width span is a real answer — a very certain interval nearly is one, and a
+  // job that burned almost no time is one — so it has to stay visible.
+  const width = Math.max(position(to) - left, 0.8);
+
+  return (
+    <span className="relative inline-block h-[7px] w-[88px] border-b border-border align-middle">
+      <span
+        className="absolute top-[2px] h-[3px] bg-text-faint"
+        style={{ left: `${left}%`, width: `${width}%` }}
+      />
+      {tick === null || tick === undefined ? null : (
+        <span
+          className="absolute top-0 h-[7px] w-px bg-text"
+          style={{ left: `${position(tick)}%` }}
+        />
+      )}
+    </span>
+  );
+}
+
+/**
+ * A confidence interval drawn to scale: the interval as a faint span, the point
+ * estimate as a bright tick inside it. Beside the printed range it answers the
+ * question the numbers make you do arithmetic for — how wide is this, next to the row
+ * above it. The printed range carries the absolute values, so the bar never has to be
+ * read off an axis it does not have.
  */
 export function IntervalBar({
   lower,
@@ -235,26 +274,137 @@ export function IntervalBar({
   /** Rate at the right-hand end of the track, as a fraction. */
   max?: number;
 }) {
+  return <Track from={lower} to={upper} tick={point} max={max} />;
+}
+
+/**
+ * One magnitude from zero, for a share of a total. No tick, because unlike an interval
+ * a share has one value and nothing to estimate — the bar *is* the number.
+ *
+ * `max` is the largest share on the page rather than 1, so the rows of a table whose
+ * biggest slice is 12% are still comparable with each other instead of all hugging the
+ * left edge. The printed percentage is what says which it is.
+ */
+export function ShareBar({ value, max = 1 }: { value: number; max?: number }) {
+  return <Track from={0} to={value} max={max} />;
+}
+
+export type TrendSeries = {
+  name: string;
+  /**
+   * One entry per step of the x axis, `null` where there is no observation. The
+   * caller aligns the array to the calendar — this component spaces entries evenly,
+   * so a series that omitted its empty days would silently compress time.
+   */
+  values: (number | null)[];
+  /** The line worth reading first. Exactly one series should set it. */
+  emphasis?: boolean;
+  /** What the last known value is, already formatted. */
+  lastLabel: string;
+};
+
+/** Runs of consecutive observations, so a gap is drawn as a gap and not bridged. */
+function segments(values: (number | null)[]): { index: number; value: number }[][] {
+  const runs: { index: number; value: number }[][] = [];
+  values.forEach((value, index) => {
+    if (value === null) {
+      if (runs.at(-1)?.length) runs.push([]);
+      return;
+    }
+    if (runs.length === 0) runs.push([]);
+    runs.at(-1)!.push({ index, value });
+  });
+  return runs.filter((run) => run.length > 0);
+}
+
+/**
+ * A line chart with no chrome: no gridlines, no axis ticks, no legend box. The scale
+ * is stated once as a peak label and the ends of the x axis are named; everything
+ * between is the shape of the line, which is the only thing a trend is for.
+ *
+ * It is an inline SVG in a server component rather than a charting library. recharts
+ * is on the allowlist and would work, but it renders on the client, and this app has
+ * exactly one client component on purpose — a chart of thirty numbers that never
+ * changes after render does not need JavaScript in the browser to draw it.
+ *
+ * `preserveAspectRatio="none"` plus `vectorEffect="non-scaling-stroke"` is what lets
+ * the chart fill the column at any width while the hairline stays exactly 1px.
+ */
+export function TrendChart({
+  series,
+  max,
+  peakLabel,
+  xLabels,
+}: {
+  series: TrendSeries[];
+  /** Top of the y scale. Zero is always the bottom: durations start there. */
+  max: number;
+  /** The scale, stated in words because the chart has no axis. */
+  peakLabel: string;
+  xLabels: [string, string];
+}) {
+  const steps = Math.max(...series.map((line) => line.values.length), 2);
   const scale = max > 0 ? max : 1;
-  const position = (value: number) => Math.min(Math.max(value / scale, 0), 1) * 100;
-  const left = position(lower);
-  // A zero-width interval is a real answer (a job with no opportunities cannot have
-  // one, but a very certain job nearly does), and it has to remain visible.
-  const width = Math.max(position(upper) - left, 0.8);
+  const x = (index: number) => (steps === 1 ? 0 : (index / (steps - 1)) * 100);
+  const y = (value: number) => 40 - Math.min(Math.max(value / scale, 0), 1) * 40;
 
   return (
-    <span className="relative inline-block h-[7px] w-[88px] border-b border-border align-middle">
-      <span
-        className="absolute top-[2px] h-[3px] bg-text-faint"
-        style={{ left: `${left}%`, width: `${width}%` }}
-      />
-      {point === null || point === undefined ? null : (
-        <span
-          className="absolute top-0 h-[7px] w-px bg-text"
-          style={{ left: `${position(point)}%` }}
-        />
-      )}
-    </span>
+    <div>
+      <p className="font-mono text-[11px] text-text-faint">{peakLabel}</p>
+      <svg
+        viewBox="0 0 100 40"
+        preserveAspectRatio="none"
+        className="mt-2 h-[120px] w-full border-b border-border"
+        role="img"
+        aria-label={`${series.map((line) => line.name).join(" and ")} trend`}
+      >
+        {series.map((line) =>
+          segments(line.values).map((run, index) => {
+            const stroke = line.emphasis ? "stroke-text" : "stroke-text-faint";
+            // A lone observation between two gaps is still a fact, and a polyline of
+            // one point draws nothing at all, so it becomes a dot instead.
+            if (run.length === 1) {
+              return (
+                <circle
+                  key={`${line.name}-${index}`}
+                  cx={x(run[0].index)}
+                  cy={y(run[0].value)}
+                  r={0.8}
+                  className={clsx(stroke, line.emphasis ? "fill-text" : "fill-text-faint")}
+                />
+              );
+            }
+            return (
+              <polyline
+                key={`${line.name}-${index}`}
+                points={run.map((p) => `${x(p.index)},${y(p.value)}`).join(" ")}
+                fill="none"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+                className={stroke}
+              />
+            );
+          }),
+        )}
+      </svg>
+      <div className="mt-2 flex justify-between font-mono text-[11px] text-text-faint">
+        <span>{xLabels[0]}</span>
+        <span>{xLabels[1]}</span>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-[11px] text-text-faint">
+        {series.map((line) => (
+          <span key={line.name} className="inline-flex items-center gap-2">
+            <span
+              className={clsx(
+                "inline-block h-px w-4 align-middle",
+                line.emphasis ? "bg-text" : "bg-text-faint",
+              )}
+            />
+            {line.name} · {line.lastLabel}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 

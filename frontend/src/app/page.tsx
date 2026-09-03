@@ -11,27 +11,34 @@ import {
   Page,
   Section,
   SectionLabel,
+  ShareBar,
   StatBlock,
   Switcher,
   Table,
   Timeline,
   toneClass,
+  TrendChart,
   TwoToneHeading,
   type TimelineCommit,
   type Tone,
 } from "@/components/primitives";
 import {
+  listDurationTrend,
   listFlaky,
   listJobHistory,
   listJobs,
+  listMinutes,
   listRepos,
   type CommitHistory,
+  type DurationPoint,
   type FlakyRow,
   type JobRow,
+  type MinutesRow,
   type RepoSummary,
 } from "@/lib/api";
 import {
   formatDay,
+  formatDayShort,
   formatDuration,
   formatPercent,
   formatPoints,
@@ -47,6 +54,8 @@ const WINDOW_DAYS = 30;
 const LIMIT = 50;
 /** Commits on the timeline, not attempts — a heavily re-run commit is one group. */
 const COMMITS = 40;
+
+type GroupBy = "workflow" | "job";
 
 function conclusionTone(conclusion: string | null): Tone {
   switch (conclusion) {
@@ -159,6 +168,54 @@ function commitRows(history: CommitHistory[]) {
   }));
 }
 
+function minutesRows(minutes: MinutesRow[]) {
+  const widest = Math.max(...minutes.map((row) => row.share), 0.05);
+  return minutes.map((row) => ({
+    workflow: row.workflow_name ?? "unknown workflow",
+    job: row.job_name ?? "—",
+    runs: `${row.runs}`,
+    mean: formatDuration(row.mean_seconds),
+    total: formatDuration(row.seconds),
+    share: (
+      <span className="inline-flex items-center gap-3">
+        <ShareBar value={row.share} max={widest} />
+        <span>{formatPercent(row.share)}</span>
+      </span>
+    ),
+  }));
+}
+
+/**
+ * The chart's x axis is the window's calendar, not the list of days that have data.
+ * The API omits a day the job did not run, so the points are placed back onto every
+ * day of the window here and the missing ones stay null — a series drawn from the rows
+ * alone would space eleven scattered days evenly and quietly rewrite when they were.
+ *
+ * The day count is `WINDOW_DAYS + 1` because the API's cutoff is inclusive: a 30-day
+ * window is the 30 days before today plus today.
+ */
+function alignToWindow(points: DurationPoint[], days: number) {
+  const now = new Date();
+  const keys: string[] = [];
+  for (let back = days - 1; back >= 0; back -= 1) {
+    const day = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - back),
+    );
+    keys.push(day.toISOString().slice(0, 10));
+  }
+  const byDay = new Map(points.map((point) => [point.day, point]));
+  return { keys, aligned: keys.map((key) => byDay.get(key) ?? null) };
+}
+
+/** The last observation in a series, which is what the legend names. */
+function lastValue(values: (number | null)[]): number | null {
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const value = values[index];
+    if (value !== null) return value;
+  }
+  return null;
+}
+
 /** Signed out. No repository data is fetched on this path at all. */
 function SignedOut() {
   return (
@@ -198,7 +255,7 @@ function NothingInstalled() {
 export default async function ReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ repo?: string; job?: string }>;
+  searchParams: Promise<{ repo?: string; job?: string; by?: string }>;
 }) {
   const session = await auth();
   const repoIds = session?.user ? await authorizedRepoIds() : null;
@@ -219,24 +276,41 @@ export default async function ReportPage({
     );
   }
 
-  const [board, jobs] = await Promise.all([
+  const groupBy = pickGrouping(requested.by);
+  const [board, jobs, minutes] = await Promise.all([
     listFlaky(repo.id, repoIds, WINDOW_DAYS, LIMIT),
     listJobs(repo.id, repoIds, LIMIT),
+    listMinutes(repo.id, repoIds, groupBy, WINDOW_DAYS, LIMIT),
   ]);
 
-  // The timeline is about one job, and which job is only knowable once the board
-  // has answered — the default is the one ranked worst.
+  // The timeline and the duration trend are about one job, and which job is only
+  // knowable once the board has answered — the default is the one ranked worst.
   const tracked = pickJob(board, requested.job);
-  const history = tracked
-    ? await listJobHistory(
-        repo.id,
-        tracked.job_name,
-        repoIds,
-        tracked.workflow_id,
-        WINDOW_DAYS,
-        COMMITS,
-      )
-    : [];
+  const [history, trend] = tracked
+    ? await Promise.all([
+        listJobHistory(
+          repo.id,
+          tracked.job_name,
+          repoIds,
+          tracked.workflow_id,
+          WINDOW_DAYS,
+          COMMITS,
+        ),
+        listDurationTrend(
+          repo.id,
+          tracked.job_name,
+          repoIds,
+          tracked.workflow_id,
+          WINDOW_DAYS,
+        ),
+      ])
+    : [[], []];
+
+  const durations = alignToWindow(trend, WINDOW_DAYS + 1);
+  const p50 = durations.aligned.map((point) => point?.p50_seconds ?? null);
+  const p95 = durations.aligned.map((point) => point?.p95_seconds ?? null);
+  const peak = Math.max(...p95.map((value) => value ?? 0), 1);
+  const totalSeconds = minutes.reduce((total, row) => total + row.seconds, 0);
 
   const flakes = board.reduce((total, row) => total + row.flakes, 0);
   const opportunities = board.reduce((total, row) => total + row.opportunities, 0);
@@ -258,7 +332,8 @@ export default async function ReportPage({
             items={repos.map((item) => ({
               label: item.full_name,
               // Deliberately drops `?job=`: a job name belongs to the repo it ran in.
-              href: reportHref(item, repos),
+              // The grouping is not repo-specific, so that one survives the switch.
+              href: reportHref(item, repos, undefined, groupBy),
               current: item.id === repo.id,
             }))}
           />
@@ -315,7 +390,7 @@ export default async function ReportPage({
           <Switcher
             items={board.map((row) => ({
               label: row.job_name,
-              href: reportHref(repo, repos, row.job_name),
+              href: reportHref(repo, repos, row.job_name, groupBy),
               current: row.job_name === tracked.job_name,
             }))}
           />
@@ -351,6 +426,42 @@ export default async function ReportPage({
                   rows={commitRows(history)}
                 />
               </div>
+              {trend.length > 0 ? (
+                <div className="mt-16">
+                  <SectionLabel>how long it takes</SectionLabel>
+                  <div className="mt-8">
+                    <TrendChart
+                      max={peak}
+                      peakLabel={`p95 peaks at ${formatDuration(peak)} · scale starts at zero`}
+                      xLabels={[
+                        formatDayShort(durations.keys[0]),
+                        formatDayShort(durations.keys.at(-1)!),
+                      ]}
+                      series={[
+                        {
+                          name: "p95",
+                          values: p95,
+                          emphasis: true,
+                          lastLabel: formatDuration(lastValue(p95)),
+                        },
+                        {
+                          name: "p50",
+                          values: p50,
+                          lastLabel: formatDuration(lastValue(p50)),
+                        },
+                      ]}
+                    />
+                  </div>
+                  <Body className="mt-8 max-w-[680px]">
+                    Both lines are the rollup&apos;s own per-day percentiles, drawn on
+                    the window&apos;s calendar rather than on the days that happen to
+                    have data — a day this job did not finish anything is a gap, because
+                    it did not take zero seconds. There is no window-wide p95 anywhere
+                    on this page: percentiles do not sum, and the only honest way back
+                    to one would be to rescan every job row.
+                  </Body>
+                </div>
+              ) : null}
             </>
           ) : (
             <Body className="mt-8 max-w-[680px]">
@@ -360,6 +471,55 @@ export default async function ReportPage({
               here.
             </Body>
           )}
+        </Section>
+      ) : null}
+
+      {minutes.length > 0 ? (
+        <Section label="where the time goes">
+          <Switcher
+            items={[
+              {
+                label: "by workflow",
+                href: reportHref(repo, repos, requested.job, "workflow"),
+                current: groupBy === "workflow",
+              },
+              {
+                label: "by job",
+                href: reportHref(repo, repos, requested.job, "job"),
+                current: groupBy === "job",
+              },
+            ]}
+          />
+          <div className="mt-8">
+            <StatBlock
+              value={formatDuration(totalSeconds)}
+              label={`runner time in the last ${WINDOW_DAYS} days`}
+              caption={`${minutes.reduce((total, row) => total + row.runs, 0)} finished job runs · wall clock, not billed minutes`}
+            />
+          </div>
+          <div className="mt-8">
+            <Table
+              columns={[
+                { key: "workflow", header: "workflow" },
+                ...(groupBy === "job" ? [{ key: "job", header: "job" }] : []),
+                { key: "runs", header: "runs", numeric: true },
+                { key: "mean", header: "mean", numeric: true },
+                { key: "total", header: "total", numeric: true },
+                { key: "share", header: "share", numeric: true },
+              ]}
+              rows={minutesRows(minutes)}
+            />
+          </div>
+          <Body className="mt-8 max-w-[680px]">
+            This is wall-clock time between each job&apos;s start and finish, which is
+            not your bill: GitHub rounds every job up to the whole minute, multiplies by
+            a factor for the runner it ran on, and charges private repositories against
+            an allowance that public ones never touch. None of those three are visible
+            in the Actions API, so this page reports what it can actually see. The
+            column says <span className="font-mono">mean</span> rather than median for a
+            related reason — the rollup keeps a percentile per day, and percentiles do
+            not add up across days.
+          </Body>
         </Section>
       ) : null}
 
@@ -460,11 +620,28 @@ function pickJob(board: FlakyRow[], requested: string | undefined): FlakyRow | u
   return match;
 }
 
+/**
+ * How the minutes table is grouped. A value that is neither is a 404 rather than a
+ * silent fallback to the default, matching what `?repo=` and `?job=` do — a query
+ * string this page does not understand is a URL that does not exist.
+ */
+function pickGrouping(requested: string | undefined): GroupBy {
+  if (requested === undefined) return "workflow";
+  if (requested !== "workflow" && requested !== "job") notFound();
+  return requested;
+}
+
 /** The canonical URL for one view of the report. Defaults stay out of the query. */
-function reportHref(repo: RepoSummary, repos: RepoSummary[], jobName?: string): string {
+function reportHref(
+  repo: RepoSummary,
+  repos: RepoSummary[],
+  jobName?: string,
+  groupBy?: GroupBy,
+): string {
   const query = new URLSearchParams();
   if (repo.id !== repos[0].id) query.set("repo", `${repo.id}`);
   if (jobName !== undefined) query.set("job", jobName);
+  if (groupBy !== undefined && groupBy !== "workflow") query.set("by", groupBy);
   const search = query.toString();
   return search ? `/?${search}` : "/";
 }
