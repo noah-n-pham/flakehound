@@ -1,6 +1,7 @@
 import {
   Body,
   Button,
+  ExternalLink,
   Heading,
   InlineLink,
   IntervalBar,
@@ -374,6 +375,29 @@ export default function StyleguidePage() {
           in it. Monochrome leaves no colour to signal a link with, so the
           underline is the affordance and hover strengthens it.
         </Body>
+      </Section>
+
+      <Section label="external link">
+        {/* Two faces because the board uses both: sans in a sentence, mono wherever
+            the link text is an identifier. Both open in a new tab — a reader
+            checking a claim on github.com should keep the page they were reading. */}
+        <Body>
+          Body copy pointing at{" "}
+          <ExternalLink href="https://github.com/angr/cle">
+            somebody else&apos;s repository
+          </ExternalLink>
+          , which is what the public board does on every row.
+        </Body>
+        <p className="mt-6 font-mono text-[13px] text-text-muted">
+          run{" "}
+          <ExternalLink
+            href="https://github.com/angr/cle/actions/runs/33774557574"
+            mono
+          >
+            33774557574
+          </ExternalLink>{" "}
+          · attempt 1
+        </p>
       </Section>
 
       <Section label="rule">

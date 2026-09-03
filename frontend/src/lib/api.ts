@@ -108,10 +108,33 @@ export type DurationPoint = {
   total_seconds: number;
 };
 
-/** The same row on the public board, which spans repos and so must name one. */
+/**
+ * The one failing job run behind a board row, chosen by the API out of the same
+ * evidence its `flakes` were counted through. Null only when the row never flaked.
+ */
+export type FlakeProof = {
+  job_id: number;
+  run_id: number;
+  run_attempt: number;
+  head_sha: string;
+  conclusion: string | null;
+  completed_at: string | null;
+};
+
+/**
+ * The same row on the public board, which spans repos and so must name one — and,
+ * because it publishes a claim about somebody else's repository, must carry both the
+ * workflow the job belongs to and a job run that proves the claim.
+ *
+ * `workflow_name` is usually null for a repo we only observe: a webhook carries the
+ * workflow's name and the runs listing carries only its path.
+ */
 export type PublicFlakyRow = FlakyRow & {
   repo_id: number;
   repo_full_name: string;
+  workflow_name: string | null;
+  workflow_path: string | null;
+  proof: FlakeProof | null;
 };
 
 function required(name: string): string {
@@ -246,12 +269,17 @@ export function listDurationTrend(
 export async function listPublicFlaky(
   windowDays = 30,
   limit = 50,
+  minFlakes = 0,
 ): Promise<PublicFlakyRow[]> {
   const base = required("API_BASE_URL").replace(/\/$/, "");
-  const response = await fetch(
-    `${base}/public/flaky?window_days=${windowDays}&limit=${limit}`,
-    { cache: "no-store" },
-  );
+  const query = new URLSearchParams({
+    window_days: `${windowDays}`,
+    limit: `${limit}`,
+    min_flakes: `${minFlakes}`,
+  });
+  const response = await fetch(`${base}/public/flaky?${query}`, {
+    cache: "no-store",
+  });
 
   if (!response.ok) {
     throw new Error(`GET /public/flaky returned ${response.status}`);

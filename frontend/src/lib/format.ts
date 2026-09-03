@@ -23,6 +23,23 @@ export function formatPoints(lower: number | null, upper: number | null): string
   return `${(lower * 100).toFixed(1)}–${(upper * 100).toFixed(1)}`;
 }
 
+/**
+ * Which workflow a job belongs to, in as few characters as a table column allows.
+ *
+ * The name when there is one, and the file's basename when there is not — a repo we
+ * only observe has a path and no name, because the runs listing the crawl reads
+ * carries the path. Never blank: two rows differing only by workflow are the reason
+ * this column exists, so an empty cell would defeat it.
+ */
+export function workflowLabel(
+  name: string | null,
+  path: string | null,
+): string {
+  if (name) return name;
+  if (path) return path.split("/").pop() ?? path;
+  return "—";
+}
+
 /** UTC day only, for a column whose header says nothing finer is meant. */
 export function formatDay(iso: string | null): string {
   return iso ? iso.slice(0, 10) : "—";

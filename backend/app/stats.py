@@ -9,15 +9,15 @@ climbs, and the interval width is itself the honest statement of what is known.
 The point estimate and both bounds are stored and displayed.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from math import sqrt
 
 from sqlalchemy import BigInteger, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.detection import FAILURE, opportunity_filter, outcome_expression
-from app.models import FlakeEvent, Job, JobStatsDaily, Repository
+from app.detection import FAILURE, SUCCESS, opportunity_filter, outcome_expression
+from app.models import FlakeEvent, Job, JobStatsDaily, Repository, Workflow
 
 # Two-sided 95%: the z that leaves 2.5% in each tail.
 Z_95 = 1.959963984540054
@@ -84,11 +84,39 @@ class JobFlakiness:
 
 
 @dataclass(frozen=True)
+class FlakeProof:
+    """One failing job run a board row can be checked against on github.com.
+
+    The public board makes a claim about a repository whose owner did not ask to be
+    measured, so a row that cannot be checked in one click is not publishable. This is
+    the pointer that makes it checkable: a job id and the run attempt it belongs to,
+    which together address a page on github.com that shows the failure itself.
+    """
+
+    job_id: int
+    run_id: int
+    run_attempt: int
+    head_sha: str
+    conclusion: str | None
+    completed_at: datetime | None
+
+
+@dataclass(frozen=True)
 class PublicJobFlakiness(JobFlakiness):
-    """A leaderboard row from the cross-repo public board, which names its repo."""
+    """A leaderboard row from the cross-repo public board, which names its repo.
+
+    `workflow_name` is usually null for a crawled repo and `workflow_path` is not: a
+    webhook payload carries the workflow's name, while the runs listing the crawl reads
+    carries only its id and file path. The board therefore has to be able to identify a
+    workflow by path, because two workflows can run a job of the same name and the rows
+    are otherwise indistinguishable.
+    """
 
     repo_id: int
     repo_full_name: str
+    workflow_name: str | None = None
+    workflow_path: str | None = None
+    proof: FlakeProof | None = None
 
     @property
     def identity(self) -> tuple:
@@ -167,6 +195,7 @@ async def public_flaky_jobs(
     *,
     window_days: int = 30,
     limit: int = 50,
+    min_flakes: int = 0,
     now: datetime | None = None,
 ) -> list[PublicJobFlakiness]:
     """The cross-repo leaderboard behind `/public/flaky`: public repos only, no auth.
@@ -192,6 +221,13 @@ async def public_flaky_jobs(
 
     Served from the rollup like every other aggregate, so the same window rules apply
     as `flaky_jobs()` — a whole number of UTC days, current to the last sweep.
+
+    `min_flakes` is opt-in and defaults to keeping everything, because a leaderboard
+    that lists a repo's clean jobs below its flaky ones is telling the truth. It exists
+    because the *page* is a different claim: a ten-row board headed "the flakiest CI"
+    must not contain a job that never flaked, and the Wilson lower bound cannot be
+    trusted to exclude one — `wilson_interval(0, n)` returns `3.5e-18`, not zero, so
+    "the bound is positive" is not the filter it appears to be.
     """
     cutoff = ((now or datetime.now(UTC)) - timedelta(days=window_days)).date()
     rows = (
@@ -200,6 +236,8 @@ async def public_flaky_jobs(
                 Repository.id.label("repo_id"),
                 Repository.full_name.label("repo_full_name"),
                 JobStatsDaily.workflow_id,
+                Workflow.name.label("workflow_name"),
+                Workflow.path.label("workflow_path"),
                 JobStatsDaily.job_name,
                 func.sum(JobStatsDaily.opportunities).label("opportunities"),
                 func.sum(JobStatsDaily.failures).label("failures"),
@@ -207,6 +245,9 @@ async def public_flaky_jobs(
                 func.max(JobStatsDaily.last_flake_at).label("last_flake_at"),
             )
             .join(Repository, Repository.id == JobStatsDaily.repo_id)
+            # Outer: a job whose run was stubbed from a `workflow_job` payload has no
+            # workflow row yet, and dropping it would silently shorten the board.
+            .outerjoin(Workflow, Workflow.id == JobStatsDaily.workflow_id)
             .where(
                 Repository.private.is_(False),
                 Repository.active.is_(True),
@@ -216,18 +257,25 @@ async def public_flaky_jobs(
                 Repository.id,
                 Repository.full_name,
                 JobStatsDaily.workflow_id,
+                Workflow.name,
+                Workflow.path,
                 JobStatsDaily.job_name,
             )
-            .having(func.sum(JobStatsDaily.opportunities) > 0)
+            .having(
+                func.sum(JobStatsDaily.opportunities) > 0,
+                func.sum(JobStatsDaily.flakes) >= min_flakes,
+            )
         )
     ).all()
 
-    return _ranked(
+    ranked = _ranked(
         [
             PublicJobFlakiness(
                 repo_id=row.repo_id,
                 repo_full_name=row.repo_full_name,
                 workflow_id=row.workflow_id,
+                workflow_name=row.workflow_name,
+                workflow_path=row.workflow_path,
                 job_name=row.job_name,
                 opportunities=row.opportunities,
                 failures=row.failures,
@@ -239,6 +287,80 @@ async def public_flaky_jobs(
         ],
         limit,
     )
+    proofs = await _board_proofs(session, ranked)
+    return [
+        replace(row, proof=proofs.get((row.repo_id, row.workflow_id, row.job_name)))
+        for row in ranked
+    ]
+
+
+async def _board_proofs(
+    session: AsyncSession, rows: list[PublicJobFlakiness]
+) -> dict[tuple[int, int | None, str], FlakeProof]:
+    """The newest failing job run behind each ranked row, one query for the whole board.
+
+    Recovered by expanding `flake_events.evidence.job_ids` onto `jobs` — the same
+    mapping the rollup counts `flakes` through — so a proof is one of the job runs that
+    put the row on the board rather than a second opinion about it. A row with no flakes
+    gets no proof for exactly that reason, and needs none.
+
+    That join, rather than the event's own columns, is also what makes a proof
+    attributable to a workflow. Signal A groups by run and leaves `workflow_id` null,
+    while a board row is a (workflow, job name) pair — and two workflows in one repo can
+    run a job of the same name, which is not hypothetical: `ROCm/rocm-systems` has
+    "Multi-Arch CI Summary" in two of them. `jobs.workflow_id` is what separates them.
+    """
+    if not rows:
+        return {}
+
+    implicated = (
+        select(
+            FlakeEvent.repo_id.label("repo_id"),
+            func.jsonb_array_elements_text(FlakeEvent.evidence["job_ids"]).label("job_id"),
+        )
+        .where(
+            FlakeEvent.repo_id.in_({row.repo_id for row in rows}),
+            FlakeEvent.job_name.in_({row.job_name for row in rows}),
+        )
+        .subquery()
+    )
+    # DISTINCT ON takes the first row of each group, which the ORDER BY makes the most
+    # recent failure — the one a reader checking the board would look for first.
+    newest = (
+        select(
+            Job.repo_id,
+            Job.workflow_id,
+            Job.name,
+            Job.id.label("job_id"),
+            Job.run_id,
+            Job.run_attempt,
+            Job.head_sha,
+            Job.conclusion,
+            Job.completed_at,
+        )
+        .join(implicated, cast(implicated.c.job_id, BigInteger) == Job.id)
+        .where(Job.conclusion.is_not(None), Job.conclusion != SUCCESS)
+        .distinct(Job.repo_id, Job.workflow_id, Job.name)
+        .order_by(
+            Job.repo_id,
+            Job.workflow_id,
+            Job.name,
+            Job.completed_at.desc().nullslast(),
+            Job.id.desc(),
+        )
+    )
+
+    return {
+        (row.repo_id, row.workflow_id, row.name): FlakeProof(
+            job_id=row.job_id,
+            run_id=row.run_id,
+            run_attempt=row.run_attempt,
+            head_sha=row.head_sha,
+            conclusion=row.conclusion,
+            completed_at=row.completed_at,
+        )
+        for row in (await session.execute(newest)).all()
+    }
 
 
 async def flaky_jobs_from_facts(

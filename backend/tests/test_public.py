@@ -9,15 +9,22 @@ names the private repo by id.
 
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 
-from app.models import Repository
+from app.models import FlakeEvent, Job, Repository
 from app.rollup import rollup_repository
 from app.stats import public_flaky_jobs
 from tests.helpers import deliver
 from tests.payloads import REPO_ID
 from tests.test_api import reader
-from tests.test_detection import OTHER_RUN_ID, OTHER_WORKFLOW_ID, RUN_ID, attempt, run_event
+from tests.test_detection import (
+    OTHER_RUN_ID,
+    OTHER_WORKFLOW_ID,
+    RUN_ID,
+    WORKFLOW_ID,
+    attempt,
+    run_event,
+)
 
 # The default fixture repo (`khoi/flakehound`, public) plus two more, each with its own
 # run ids so the synthetic job ids stay distinct — a job id is a primary key, and two
@@ -282,3 +289,115 @@ async def test_the_query_ignores_a_private_repo_even_called_directly(db_session)
     rows = await public_flaky_jobs(db_session, window_days=90)
 
     assert {row.repo_id for row in rows} == {REPO_ID, SECOND_PUBLIC_REPO_ID}
+
+
+# --------------------------------------------------------------------------- #
+# What the ten-row board asks for on top
+# --------------------------------------------------------------------------- #
+
+
+async def test_min_flakes_keeps_a_job_that_never_flaked_off_the_board(client, db_session):
+    """The board's own filter. It is `flakes`, not the Wilson bound — see
+    `test_a_zero_flake_rate_does_not_reliably_give_a_zero_lower_bound`, which is why."""
+    await seed_three_repos(db_session)
+
+    assert ("khoi/flakehound", "stable leg") in named(await board(client))
+
+    ranked = await board(client, min_flakes=1)
+
+    assert named(ranked) == [
+        ("khoi/flakehound", "build and deploy"),
+        ("khoi/form-check", "build and deploy"),
+    ]
+    assert all(row["flakes"] > 0 for row in ranked)
+
+
+async def test_min_flakes_is_applied_before_the_limit(client, db_session):
+    """Otherwise a ten-row board would ask for ten and render two: the clean rows would
+    take the slots and then be dropped."""
+    await seed_three_repos(db_session)
+
+    assert len(await board(client, min_flakes=1, limit=2)) == 2
+
+
+async def test_a_row_carries_the_workflow_it_belongs_to(client, db_session):
+    await seed_three_repos(db_session)
+
+    row = (await board(client, min_flakes=1))[0]
+
+    assert row["workflow_name"] == "ci"
+    assert row["workflow_path"] == ".github/workflows/ci.yml"
+
+
+async def test_a_row_is_proved_by_one_of_the_failing_job_runs_it_counted(
+    client, db_session
+):
+    """The proof has to be a job run the row's own `flakes` counted, not a lookalike.
+
+    So it is checked against the evidence the rollup counts through: the job ids named
+    by this repo's flake events, restricted to the ones that failed.
+    """
+    await seed_three_repos(db_session)
+
+    row = (await board(client, min_flakes=1))[0]
+    proof = row["proof"]
+
+    implicated = (
+        await db_session.execute(
+            select(FlakeEvent.evidence["job_ids"]).where(FlakeEvent.repo_id == REPO_ID)
+        )
+    ).scalars()
+    named_ids = {int(job_id) for ids in implicated for job_id in ids}
+
+    assert proof["job_id"] in named_ids
+    job = await db_session.get(Job, proof["job_id"])
+    assert (job.run_id, job.run_attempt, job.name) == (
+        proof["run_id"],
+        proof["run_attempt"],
+        row["job_name"],
+    )
+    assert job.conclusion == proof["conclusion"] == "failure"
+    assert proof["head_sha"] == job.head_sha
+
+
+async def test_a_clean_row_has_no_proof(client, db_session):
+    """Nothing to prove, so nothing is offered — rather than the newest failure of
+    some other job in the same repo."""
+    await seed_three_repos(db_session)
+
+    clean = [row for row in await board(client) if row["job_name"] == "stable leg"]
+
+    assert clean
+    assert all(row["proof"] is None for row in clean)
+
+
+async def test_two_workflows_running_the_same_job_name_get_their_own_proofs(
+    client, db_session
+):
+    """The `ROCm/rocm-systems` case, which is why the proof is found through
+    `jobs.workflow_id` and not through the flake event's own columns — Signal A leaves
+    `workflow_id` null, so an event cannot say which of two workflows it belongs to."""
+    await deliver(
+        db_session,
+        run_event(run_id=RUN_ID, workflow_id=WORKFLOW_ID, workflow_name="ci"),
+        attempt(1, "failure"),
+        attempt(2, "success"),
+    )
+    await deliver(
+        db_session,
+        run_event(run_id=OTHER_RUN_ID, workflow_id=OTHER_WORKFLOW_ID, workflow_name="deploy"),
+        attempt(1, "failure", run_id=OTHER_RUN_ID),
+        attempt(2, "success", run_id=OTHER_RUN_ID),
+    )
+    await rollup_repository(db_session, repo_id=REPO_ID)
+
+    rows = await board(client, min_flakes=1)
+
+    assert {row["workflow_path"] for row in rows} == {
+        ".github/workflows/ci.yml",
+        ".github/workflows/deploy.yml",
+    }
+    assert len({row["proof"]["job_id"] for row in rows}) == 2
+    for row in rows:
+        job = await db_session.get(Job, row["proof"]["job_id"])
+        assert job.workflow_id == row["workflow_id"]

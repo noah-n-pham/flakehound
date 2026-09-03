@@ -545,6 +545,39 @@ export function InlineLink({
   );
 }
 
+/**
+ * A link off this site, for a table cell rather than a sentence.
+ *
+ * Separate from `InlineLink` for two reasons that both come from the public board.
+ * It carries `target`/`rel`, because sending a reader to github.com to check a claim
+ * should not cost them the page they were reading. And it is available in mono, since
+ * every one of these is an identifier — a repo name, a run id — and DESIGN.md puts
+ * data in the mono face regardless of it being a link.
+ */
+export function ExternalLink({
+  href,
+  mono = false,
+  children,
+}: {
+  href: string;
+  mono?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={clsx(
+        "underline decoration-border-strong decoration-1 underline-offset-4 transition-colors duration-150 hover:decoration-text-muted",
+        mono ? "font-mono text-text" : "text-text",
+      )}
+    >
+      {children}
+    </a>
+  );
+}
+
 export function Button({
   children,
   variant = "primary",

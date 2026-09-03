@@ -8,6 +8,7 @@ the query, not the caller: `public_flaky_jobs()` joins `repositories` on
 widens what it returns.
 """
 
+from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated
 
@@ -23,12 +24,30 @@ router = APIRouter(prefix="/public")
 SessionDep = Annotated[AsyncSession, Depends(session_scope)]
 
 
+class FlakeProof(BaseModel):
+    """The failing job run that puts a row on the board, addressable on github.com.
+
+    Identifiers rather than a URL: the row names a repository whose owner never asked
+    to be measured, so what travels is the evidence, and the one place that turns a job
+    id into a link is the page that renders it.
+    """
+
+    job_id: int
+    run_id: int
+    run_attempt: int
+    head_sha: str
+    conclusion: str | None
+    completed_at: datetime | None
+
+
 class PublicFlakyJob(BaseModel):
     """One row of the public board. Names its repo, because the board spans repos."""
 
     repo_id: int
     repo_full_name: str
     workflow_id: int | None
+    workflow_name: str | None
+    workflow_path: str | None
     job_name: str
     opportunities: int
     failures: int
@@ -37,6 +56,7 @@ class PublicFlakyJob(BaseModel):
     flake_rate: float | None
     wilson_lower: float | None
     wilson_upper: float | None
+    proof: FlakeProof | None
 
 
 @router.get("/flaky")
@@ -44,19 +64,28 @@ async def flaky(
     session: SessionDep,
     window_days: Annotated[int, Query(ge=1, le=365)] = 30,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    min_flakes: Annotated[int, Query(ge=0)] = 0,
 ) -> list[PublicFlakyJob]:
     """The flakiest jobs across every public repo, ranked by the Wilson lower bound.
 
     Ranking by the lower bound matters more here than on a private board: this one
     spans repos, so the "one flake in two runs" row would otherwise outrank a job
     with real evidence behind it, in public.
+
+    `min_flakes=1` is what the ten-row board asks for. It is a parameter rather than
+    the default because a leaderboard including a repo's clean jobs is a true
+    leaderboard, and the caller is the only one that knows which claim it is making.
     """
-    board = await public_flaky_jobs(session, window_days=window_days, limit=limit)
+    board = await public_flaky_jobs(
+        session, window_days=window_days, limit=limit, min_flakes=min_flakes
+    )
     return [
         PublicFlakyJob(
             repo_id=job.repo_id,
             repo_full_name=job.repo_full_name,
             workflow_id=job.workflow_id,
+            workflow_name=job.workflow_name,
+            workflow_path=job.workflow_path,
             job_name=job.job_name,
             opportunities=job.opportunities,
             failures=job.failures,
@@ -65,6 +94,7 @@ async def flaky(
             flake_rate=job.interval.rate if job.interval else None,
             wilson_lower=job.interval.lower if job.interval else None,
             wilson_upper=job.interval.upper if job.interval else None,
+            proof=FlakeProof(**asdict(job.proof)) if job.proof else None,
         )
         for job in board
     ]

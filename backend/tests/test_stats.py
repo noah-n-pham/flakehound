@@ -49,6 +49,23 @@ def test_a_job_that_never_flaked_still_has_an_upper_bound():
     assert interval.upper == approx(0.2775)
 
 
+def test_a_zero_flake_rate_does_not_reliably_give_a_zero_lower_bound():
+    """Why the public board filters on `flakes` and not on the bound being positive.
+
+    At p = 0 the centre and the margin are equal, so their difference is zero in
+    arithmetic and floating-point noise here: for most denominators it cancels exactly,
+    and for some — 64 opportunities, say — it leaves 3.5e-18 behind. Ranking is
+    unaffected, since every real bound is many orders of magnitude larger. Filtering is
+    not: "wilson_lower > 0" would put a job that never flaked on a board of flaky jobs,
+    for 64 runs and not for 65, which is the kind of bug that ships.
+    """
+    bounds = {n: wilson_interval(0, n).lower for n in range(2, 200)}
+
+    assert all(bound < 1e-15 for bound in bounds.values())
+    assert bounds[64] > 0
+    assert bounds[91] == 0.0
+
+
 def test_the_published_intervals_are_reproduced():
     one_in_ten = wilson_interval(1, 10)
     assert (one_in_ten.lower, one_in_ten.upper) == (approx(0.0179), approx(0.4042))
