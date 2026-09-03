@@ -4,8 +4,9 @@ Real numbers from real runs. Every figure here was produced by a command in
 `loadtest/`, and any figure that is not yet measured says so instead of being
 estimated.
 
-**Measured so far:** scenario 1, webhook ingest throughput, against the container.
-**Not yet measured:** read load, the tunnel smoke test, and the chaos pass.
+**Measured so far:** scenario 1, webhook ingest throughput, and scenario 2, dashboard
+read load — both against the container.
+**Not yet measured:** the tunnel smoke test and the chaos pass.
 
 ---
 
@@ -127,12 +128,141 @@ no errors — is what a small pool behind a large arrival burst looks like.
 the pool, re-run the same ladder, and see whether the ceiling moves or the tail
 flattens. Until then it is written here as a suspect and not as a cause.
 
+Scenario 2 narrowed it without settling it — see "Where the time actually goes"
+below. The API process is exonerated; the pool and Postgres are not separated.
+
+---
+
+## Scenario 2 — dashboard read load
+
+### Method
+
+`loadtest/read_ladder.sh` walks the offered rate up, one k6 process per plateau,
+30 seconds each after a discarded warm-up, k6 in a container on the compose
+network posting to `http://app:8000`. Same shape as scenario 1, same reasons.
+
+**One iteration is one page load, not one request.** `frontend/src/app/page.tsx`
+issues six calls in two waves: `/api/repos` first, because which repo to show comes
+out of it; then the flake board, the job list and the minutes attribution together;
+then the timeline and the duration trend, which need the job name the board ranked
+worst. A seventh, `/public/flaky`, is in the mix because it is the one read a
+stranger can reach. Firing seven independent requests at a flat rate would exercise
+the same endpoints with none of that serialisation, and what a page owner waits on
+is the sum of the waves. **So the rate below is pages per second and the request
+rate is seven times it.**
+
+Every request carries the internal bearer token and an `X-Authorized-Repo-Ids`
+header, because without them `/api` answers 401 and 400 respectively — and a run of
+those would report a flattering number for a service that answered nothing. `setup()`
+asserts once, up front, that all seven paths return 200 and non-empty bodies.
+
+The target is the repo scenario 1 filled: **60,822 job rows and one rollup row**,
+one day of history, one job name. Everything else in the database is the dogfooded
+repo's 21 rows. The worker ran throughout, including its once-a-minute rollup sweep.
+
+### Results
+
+`pages/s` is offered; `req/s` is achieved. Latencies in milliseconds. `page` is the
+whole six-call page load as the BFF would see it; the rest are per-endpoint p99s.
+
+| pages/s | req/s | dropped | page p50 | page p95 | page p99 | errors |
+|---|---|---|---|---|---|---|
+| 2 | 14.4 | 0 | 99 | 180 | 234 | 0 |
+| 5 | 35.3 | 0 | 85 | 195 | 547 | 0 |
+| 10 | 69.8 | 0 | 80 | 114 | 196 | 0 |
+| 20 | 136.3 | 0 | 90 | 2,133 | 3,208 | 0 |
+| 40 | 251.8 | 35 | 2,263 | 4,153 | 5,073 | 0 |
+| 80 | 211.3 | 1,188 | 13,723 | 24,233 | 27,255 | 0 |
+
+Per endpoint, at the sustainable rate (10 pages/s) and at the first plateau where
+the tail breaks (20 pages/s):
+
+| endpoint | source | p50 @10 | p99 @10 | p50 @20 | p99 @20 |
+|---|---|---|---|---|---|
+| `/api/repos` | raw jobs | 10.6 | 50.7 | 12.0 | 1,184 |
+| `/api/repos/{id}/jobs` | raw jobs | 14.1 | 69.9 | 16.0 | 917 |
+| `/api/repos/{id}/jobs/{name}/history` | raw jobs | 50.5 | 99.8 | 56.5 | 822 |
+| `/api/repos/{id}/flaky` | rollup | 6.9 | 53.6 | 7.7 | 677 |
+| `/api/repos/{id}/minutes` | rollup | 6.6 | 56.8 | 7.8 | 830 |
+| `/api/repos/{id}/jobs/{name}/duration` | rollup | 5.4 | 20.1 | 7.9 | 773 |
+| `/public/flaky` | rollup | 2.6 | 14.1 | 4.6 | 504 |
+
+### What the numbers say
+
+**Sustained read load is 10 page loads/second — 70 requests/second — at a page p99
+of 196 ms.** Below that the median is flat at ~85 ms and the tail stays under a
+quarter second. The service answers a whole dashboard in under 200 ms, 99 times in
+100, while serving seventy requests a second.
+
+**It breaks between 10 and 20 pages/s, and it breaks in the tail first.** At 20 the
+median is still 90 ms — indistinguishable from the idle case — while the p95 jumps
+from 114 ms to 2,133 ms. Half the page loads are unaffected and the other half wait
+seconds. At 40 the median itself goes to 2.3 s, which is the saturation point. At 80
+achieved throughput *falls*, 252 req/s down to 211, the same "more load buys less
+work" signature scenario 1 found above 400/s.
+
+**Zero HTTP errors at every plateau, again**, including the one offering 80 pages/s
+at a service that could deliver 30. Reads degrade by waiting, exactly as ingest does.
+
+**The rollup is doing its job.** The three rollup-backed endpoints cost 5–7 ms at the
+median against 10–50 ms for the three that touch raw job rows. `/public/flaky`, the
+only one with no auth in front of it, is the cheapest thing here at 2.6 ms.
+
+**The low plateaus have noisy p99s and the 5 pages/s row is the tell** — 547 ms,
+worse than the 10 pages/s row's 196 ms. 151 page loads is a sample where the p99 is
+roughly the second-worst observation, so one rollup sweep landing inside the window
+moves it. The monotonic part of the curve starts at 10.
+
+### Where the time actually goes
+
+**Every raw-fact read is a sequential scan of the whole repo's job rows.** `EXPLAIN
+ANALYZE` on the three, against 60,822 rows:
+
+- `/api/repos/{id}/jobs` — `Parallel Seq Scan on jobs`, 60,822 rows read to return
+  50, `top-N heapsort`, 45 ms. `jobs` has indexes for the two detection signals and
+  one on `updated_at`; **nothing supports `(repo_id, started_at desc)`**.
+- the timeline's commit-picking subquery — `Seq Scan` then `HashAggregate` over
+  **60,326 groups, which spills: `Batches: 5 … Disk Usage: 752kB`**, 104 ms. It
+  groups every commit in the window to take the newest 30.
+- `/api/repos` — `Nested Loop Left Join` over all 60,822 rows to produce one count,
+  25 ms.
+
+So these three are **O(the repo's job rows), not O(the page size)**, and the constant
+is small enough to hide at 60k rows. SPEC sizes this at ~2M rows in 90 days, which is
+thirty times the row count these numbers came from.
+
+**The API process is not the bottleneck.** Sampled during a 20 pages/s plateau, when
+DB-backed p99s were 0.8–1.7 s, `/healthz` — which touches no database and checks out
+no connection — answered in **2.5 ms to 92 ms**, median ~35 ms. An event loop that
+was itself saturated would have delayed it too. Over the same window `docker stats`
+read the app container at **45–110% CPU** and Postgres at **149–337%**: the database
+is burning three cores to the app's one.
+
+That exonerates the API process and narrows scenario 1's open hypothesis without
+settling it. The queueing is at the database boundary, but "waiting for one of ten
+pooled connections" and "waiting for a Postgres that is genuinely busy" both fit,
+and at 337% CPU on sequential scans the second is now at least as plausible as the
+first. **The experiment that separates them is to add the missing index and re-run
+this ladder unchanged**: if the ceiling moves, it was the work; if only the tail
+flattens, it was the queue.
+
+### What this means for production
+
+Nothing here transfers as a rate — see the box at the top; this ran on 8 CPUs and the
+task has a quarter of one. What transfers is the shape: **the read path's cost grows
+with the repo's history on three endpoints and stays flat on four**, and the four
+flat ones are the rollup's. That is the argument for the rollup restated as a
+measurement rather than a design claim.
+
 ---
 
 ## Not yet measured
 
-- **Read load** (SPEC scenario 2): dashboard endpoints at sustained RPS, direct to
-  the container, p99.
+- **`/public/flaky` against a board with rows in it.** Both repos in the local
+  database are private, so the public board legitimately returned `[]` and its
+  numbers above are a floor: real HTTP and routing cost, no result rows. The
+  endpoint reads the same rollup the other three do, so the floor is close, but it
+  is a floor.
 - **The tunnel smoke test**: a low rate over `api.flakehound.com`, so this file is
   explicit about which numbers crossed Cloudflare and which did not.
 - **Chaos** (SPEC scenario 3): kill the worker mid-message, make Postgres
@@ -150,11 +280,17 @@ docker compose up -d --build
 ./loadtest/ladder.sh                          # 50..1600/s, k6 on the compose network
 RATES="400" DURATION=60s ./loadtest/ladder.sh # one plateau, then the drain rate
 MODE=host ./loadtest/ladder.sh                # via the published port, for comparison
+
+./loadtest/read_ladder.sh                     # 2..80 dashboard page loads/s
+RATES="10" DURATION=60s ./loadtest/read_ladder.sh
+REPO_ID=1352471967 ./loadtest/read_ladder.sh  # against real GitHub data instead
 ```
 
-The harness reads `GITHUB_WEBHOOK_SECRET` from `.env` and signs every request, so
-it exercises the real verification path. It writes to whatever database compose is
-pointing at — **never run it against production.**
+Both harnesses read their credential out of `.env` into the environment and hand
+docker the variable's *name*, so no secret reaches a command line: the webhook
+ladder needs `GITHUB_WEBHOOK_SECRET` because it signs every request, and the read
+ladder needs `INTERNAL_API_TOKEN` because `/api` answers 401 without it. They point
+at whatever database compose is pointing at — **never run either against production.**
 
 Two things it took a wrong measurement to learn, both now fixed in the harness and
 worth knowing before trusting a run:
@@ -171,3 +307,15 @@ worth knowing before trusting a run:
   them, and the drain rate measured the cheaper path. The giveaway was 30,239
   deliveries producing 1,999 new job rows. Deliveries rising 1:1 with jobs is the
   check that the harness is honest.
+- **A read test can be fast because it answered nothing.** A 401, a 400 for the
+  missing authorization header, or a 404 for an unauthorized repo all return in
+  microseconds and all look like a fast service in a percentile. `read_load.js`
+  therefore asserts in `setup()` that every path returns 200 *and* a non-empty
+  body before a single measured request is sent.
+
+Counting the requests afterwards is worth the thirty seconds it costs. Last turn
+recorded a harness that appeared to have run four times when it was invoked once,
+so this turn's runs were reconciled against the container's own access log:
+**30,358 GET lines against 30,350 expected** across nine k6 processes and the curl
+probes, with the residual being setup's health checks. The harness ran exactly as
+often as it was asked to.
