@@ -134,9 +134,10 @@ async def set_installation_lifecycle(
 async def upsert_repository(
     session: AsyncSession,
     *,
-    installation_id: int,
+    installation_id: int | None,
     repository: dict[str, Any],
     active: bool | None = None,
+    source: str = "installed",
 ) -> int:
     """Upsert one repo. `active=None` leaves an existing row's flag untouched.
 
@@ -144,12 +145,32 @@ async def upsert_repository(
     pass the flag explicitly. A `workflow_job` for a repo that was removed from
     the install must not quietly re-activate it — that decision belongs to
     `installation_repositories`, and a late job event is not evidence of it.
+
+    **`source` moves in one direction only, and the asymmetry is the point.** An
+    installed write claims the row: it sets `source = 'installed'` and the installation
+    id, which is exactly SPEC §4's "a repo that later installs the App becomes installed
+    in place, under the same GitHub repo id" — the crawled history stays, keyed on the
+    same GitHub repo id. An observed write never claims it: on conflict it leaves both
+    columns alone, so crawling a repo that already installed the App cannot demote it to
+    a repo nobody owns. Without that asymmetry the webhook and the crawl would fight over
+    every dogfooded repo, and the check constraint would start rejecting writes.
     """
+    if source == "observed":
+        # These two are the check constraint restated, raised here so the failure names
+        # the caller's mistake instead of surfacing as an IntegrityError from Postgres.
+        if installation_id is not None:
+            raise ValueError("an observed repository has no installation")
+        if bool(repository.get("private", True)):
+            raise ValueError("an observed repository must be public")
+    elif installation_id is None:
+        raise ValueError("an installed repository needs an installation")
+
     owner = repository.get("owner") or {}
     full_name = repository.get("full_name") or ""
     stmt = insert(Repository).values(
         id=repository["id"],
         installation_id=installation_id,
+        source=source,
         owner=owner.get("login") or full_name.split("/")[0],
         name=repository.get("name") or full_name.rpartition("/")[2],
         full_name=full_name,
@@ -157,11 +178,17 @@ async def upsert_repository(
         active=True if active is None else active,
         default_branch=repository.get("default_branch"),
     )
+    claims_the_row = source == "installed"
     await session.execute(
         stmt.on_conflict_do_update(
             index_elements=[Repository.id],
             set_={
-                "installation_id": stmt.excluded.installation_id,
+                "source": stmt.excluded.source if claims_the_row else Repository.source,
+                "installation_id": (
+                    stmt.excluded.installation_id
+                    if claims_the_row
+                    else Repository.installation_id
+                ),
                 "owner": stmt.excluded.owner,
                 "name": stmt.excluded.name,
                 "full_name": stmt.excluded.full_name,
