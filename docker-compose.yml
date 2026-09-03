@@ -28,6 +28,16 @@ services:
     environment:
       # Inside the compose network Postgres answers on its own port, not 5433.
       DATABASE_URL: postgresql+psycopg://ci:ci@postgres:5432/flakehound
+      # `.env` carries the real tunnel token, and a second connector presenting it
+      # would make Cloudflare balance api.flakehound.com between production and this
+      # laptop. Empty here wins over env_file, so the entrypoint skips the tunnel.
+      TUNNEL_TOKEN: ""
+      # `.env` names the key by its path on the host, which does not exist in here.
+      GITHUB_APP_PRIVATE_KEY_PATH: /run/secrets/github-app.pem
+    volumes:
+      # Interpolated from `.env`, so the host path stays in one file. /dev/null when
+      # unset: an empty key reads as absent rather than failing startup.
+      - ${GITHUB_APP_PRIVATE_KEY_PATH:-/dev/null}:/run/secrets/github-app.pem:ro
     ports:
       - "8000:8000"
 
