@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # by name if it is missing, rather than falling back to anonymous requests at
     # 60/hour and looking merely slow.
     observation_installation_id: int | None = None
+    # How far back the observational crawl walks. Shorter than `backfill_days` on
+    # purpose: an installed repo's owner asked us to look, so it gets the full 90 days,
+    # while history older than the public board's own window would be spending a shared
+    # rate limit on rows the page can never show.
+    observation_backfill_days: int = 30
 
     # Statements slower than this are logged by the worker's slow-query hook.
     slow_query_ms: int = 500

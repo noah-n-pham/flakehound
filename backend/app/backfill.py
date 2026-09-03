@@ -21,8 +21,10 @@ that completes the current row.** That is what makes "no gaps and no
 duplicates" structural rather than hopeful: the page either happened and the
 cursor moved, or neither did.
 
-Every backfill row is `priority = 1`, and `claim_batch` orders by priority, so
-live events always win. History is not time-sensitive; today's flake is.
+Installed backfill is `priority = 1`; the observational crawl is `priority = 2`.
+`claim_batch` orders by priority, so live events always win, and a real user's
+history always wins over the public board. History is not time-sensitive; today's
+flake is.
 """
 
 from dataclasses import dataclass
@@ -38,6 +40,7 @@ from app.detection import evaluate_job
 from app.github import api_request
 from app.logging import get_logger
 from app.models import EventQueue, Repository
+from app.observe import observation_installation_id
 from app.upserts import (
     parse_timestamp,
     run_workflow_id,
@@ -52,8 +55,48 @@ RUNS_JOB_TYPE = "backfill_runs"
 JOBS_JOB_TYPE = "backfill_jobs"
 # Backfill never competes with a live delivery: lower priority, always.
 BACKFILL_PRIORITY = 1
+# **The observational crawl is lower still.** It shares one 5,000/hour bucket with a
+# real user's history (D-046), so it must lose to both live events and installed
+# backfill — nobody's dashboard may be slow because the public board is filling up.
+# `claim_batch` orders by priority, so this is a constant rather than a mechanism.
+OBSERVED_PRIORITY = 2
 # A matrix wide enough to need more than this many pages of jobs does not exist.
 MAX_JOB_PAGES = 10
+
+
+def is_observed(repo: Repository) -> bool:
+    return repo.source == "observed"
+
+
+def backfill_priority(repo: Repository) -> int:
+    return OBSERVED_PRIORITY if is_observed(repo) else BACKFILL_PRIORITY
+
+
+def backfill_days(repo: Repository) -> int:
+    """How far back to walk, which is not the same answer for the two kinds of repo.
+
+    An installed repo gets the full 90 days: its owner asked us to look. An observed
+    repo gets the board's own window, because crawling history the public page will
+    never show is spending a shared rate limit on nothing.
+
+    Derived from the row rather than stored on it, so the floor here and the first
+    window in `start_backfill` cannot drift apart.
+    """
+    settings = get_settings()
+    return settings.observation_backfill_days if is_observed(repo) else settings.backfill_days
+
+
+def request_identity(repo: Repository) -> int:
+    """Whose token reads this repo, and whose bucket pays for it.
+
+    An installed repo uses its own installation. An observed one has no installation
+    at all — that is what `source = 'observed'` means — so it borrows the observation
+    identity, which is an ordinary installation token that happens to be able to read
+    any public repository (D-046).
+    """
+    if repo.installation_id is not None:
+        return repo.installation_id
+    return observation_installation_id()
 
 
 @dataclass(frozen=True)
@@ -118,12 +161,12 @@ def _save_cursor(
 
 
 async def _enqueue(
-    session: AsyncSession, *, job_type: str, payload: dict[str, Any]
+    session: AsyncSession, *, job_type: str, payload: dict[str, Any], priority: int
 ) -> int:
     row = (
         await session.execute(
             insert(EventQueue)
-            .values(job_type=job_type, payload=payload, priority=BACKFILL_PRIORITY)
+            .values(job_type=job_type, payload=payload, priority=priority)
             .returning(EventQueue.id)
         )
     ).scalar_one()
@@ -166,19 +209,27 @@ async def start_backfill(
         log.info("backfill.already_queued", repo_id=repo_id, queue_id=existing)
         return None
 
+    span = days or backfill_days(repo)
     window = first_window(
         today=datetime.now(UTC).date(),
-        days=days or settings.backfill_days,
+        days=span,
         window_days=settings.backfill_window_days,
     )
     _save_cursor(repo, window=window, page=1, status="running")
-    queue_id = await _enqueue(session, job_type=RUNS_JOB_TYPE, payload={"repo_id": repo_id})
+    queue_id = await _enqueue(
+        session,
+        job_type=RUNS_JOB_TYPE,
+        payload={"repo_id": repo_id},
+        priority=backfill_priority(repo),
+    )
     log.info(
         "backfill.started",
         repo_id=repo_id,
         queue_id=queue_id,
         window=window.as_filter(),
-        days=days or settings.backfill_days,
+        days=span,
+        source=repo.source,
+        priority=backfill_priority(repo),
     )
     return queue_id
 
@@ -204,10 +255,11 @@ async def handle_backfill_runs(session: AsyncSession, payload: dict[str, Any]) -
 
     window = Window(start=repo.backfill_window_start, end=repo.backfill_window_end)
     page = repo.backfill_page or 1
-    floor = datetime.now(UTC).date() - timedelta(days=settings.backfill_days - 1)
+    floor = datetime.now(UTC).date() - timedelta(days=backfill_days(repo) - 1)
+    priority = backfill_priority(repo)
 
     response = await api_request(
-        repo.installation_id,
+        request_identity(repo),
         "GET",
         f"/repos/{repo.full_name}/actions/runs",
         params={
@@ -234,7 +286,12 @@ async def handle_backfill_runs(session: AsyncSession, payload: dict[str, Any]) -
     if page == 1 and total > settings.backfill_result_cap and window.span_days >= 1:
         narrowed = window.halved()
         _save_cursor(repo, window=narrowed, page=1, status="running")
-        await _enqueue(session, job_type=RUNS_JOB_TYPE, payload={"repo_id": repo_id})
+        await _enqueue(
+            session,
+            job_type=RUNS_JOB_TYPE,
+            payload={"repo_id": repo_id},
+            priority=priority,
+        )
         log.info(
             "backfill.window_narrowed",
             repo_id=repo_id,
@@ -256,7 +313,9 @@ async def handle_backfill_runs(session: AsyncSession, payload: dict[str, Any]) -
 
     enqueued = 0
     for run in runs:
-        enqueued += await _record_run(session, repo_id=repo_id, run=run)
+        enqueued += await _record_run(
+            session, repo_id=repo_id, run=run, priority=priority
+        )
 
     reachable = min(total, settings.backfill_result_cap)
     more_pages = page * settings.backfill_page_size < reachable and len(runs) > 0
@@ -272,7 +331,12 @@ async def handle_backfill_runs(session: AsyncSession, payload: dict[str, Any]) -
             _save_cursor(repo, window=following, page=1, status="running")
 
     if repo.backfill_status == "running":
-        await _enqueue(session, job_type=RUNS_JOB_TYPE, payload={"repo_id": repo_id})
+        await _enqueue(
+            session,
+            job_type=RUNS_JOB_TYPE,
+            payload={"repo_id": repo_id},
+            priority=priority,
+        )
 
     log.info(
         "backfill.page",
@@ -286,7 +350,9 @@ async def handle_backfill_runs(session: AsyncSession, payload: dict[str, Any]) -
     )
 
 
-async def _record_run(session: AsyncSession, *, repo_id: int, run: dict[str, Any]) -> int:
+async def _record_run(
+    session: AsyncSession, *, repo_id: int, run: dict[str, Any], priority: int
+) -> int:
     """Store the run attempt the listing describes, and queue every attempt's jobs.
 
     The listing returns only the **latest** attempt of each run. Signal A lives
@@ -329,6 +395,7 @@ async def _record_run(session: AsyncSession, *, repo_id: int, run: dict[str, Any
             session,
             job_type=JOBS_JOB_TYPE,
             payload={"repo_id": repo_id, "run_id": run_id, "run_attempt": attempt},
+            priority=priority,
         )
     return latest_attempt
 
@@ -355,7 +422,7 @@ async def handle_backfill_jobs(session: AsyncSession, payload: dict[str, Any]) -
     page = 1
     while page <= MAX_JOB_PAGES:
         response = await api_request(
-            repo.installation_id,
+            request_identity(repo),
             "GET",
             f"/repos/{repo.full_name}/actions/runs/{run_id}/attempts/{run_attempt}/jobs",
             params={"per_page": settings.backfill_page_size, "page": page},
@@ -420,17 +487,60 @@ async def _record_job(
     )
 
 
-async def _main(repo_id: int, days: int | None) -> None:
+async def start_observed_backfills(
+    session: AsyncSession, *, limit: int, days: int | None = None
+) -> list[int]:
+    """Queue the crawl for up to `limit` admitted repositories that have none yet.
+
+    Bounded on purpose. The pool is deliberately larger than the board needs, so the
+    crawl expands a few repositories at a time until there are enough genuine rows —
+    rather than committing the whole shared rate-limit budget to it in one pass.
+
+    Only `pending` repos are picked up, so running this twice does not restart a crawl
+    that is already under way or redo one that finished.
+    """
+    repo_ids = list(
+        (
+            await session.execute(
+                select(Repository.id)
+                .where(
+                    Repository.source == "observed",
+                    Repository.active.is_(True),
+                    Repository.backfill_status == "pending",
+                )
+                .order_by(Repository.id)
+                .limit(limit)
+            )
+        ).scalars()
+    )
+
+    started: list[int] = []
+    for repo_id in repo_ids:
+        if await start_backfill(session, repo_id=repo_id, days=days) is not None:
+            started.append(repo_id)
+
+    log.info("backfill.observed_started", requested=limit, started=len(started))
+    return started
+
+
+async def _main(repo_id: int | None, days: int | None, observed: int | None) -> None:
     from app.db import dispose_engine, get_sessionmaker
 
     async with get_sessionmaker()() as session:
-        await start_backfill(session, repo_id=repo_id, days=days)
+        if observed:
+            await start_observed_backfills(session, limit=observed, days=days)
+        else:
+            await start_backfill(session, repo_id=repo_id, days=days)
         await session.commit()
     await dispose_engine()
 
 
 def main() -> None:
-    """`python -m app.backfill --repo-id N [--days 90]` — queue it, the worker runs it."""
+    """Queue a backfill; the worker runs it.
+
+    `python -m app.backfill --repo-id N [--days 90]` for one repository, or
+    `python -m app.backfill --observed 3` to crawl the next few admitted public repos.
+    """
     import argparse
     import asyncio
 
@@ -438,10 +548,17 @@ def main() -> None:
 
     configure_logging()
     parser = argparse.ArgumentParser(description="Queue a repository's history backfill.")
-    parser.add_argument("--repo-id", type=int, required=True)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--repo-id", type=int)
+    group.add_argument(
+        "--observed",
+        type=int,
+        metavar="N",
+        help="start the crawl for N admitted observed repos that have no backfill yet",
+    )
     parser.add_argument("--days", type=int, default=None)
     args = parser.parse_args()
-    asyncio.run(_main(args.repo_id, args.days))
+    asyncio.run(_main(args.repo_id, args.days, args.observed))
 
 
 if __name__ == "__main__":
