@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     # a worker sleeping out a limit looks dead and its row is given away.
     github_rate_limit_max_wait_seconds: float = 60.0
 
+    # Whose installation token reads *public* repositories for the observational
+    # board. Verified rather than assumed: an installation token reads any public
+    # repo's Actions history at the full 5,000/hour, so the board needs no new
+    # credential (D-046). Optional because ingest does not need it; the crawl raises
+    # by name if it is missing, rather than falling back to anonymous requests at
+    # 60/hour and looking merely slow.
+    observation_installation_id: int | None = None
+
     # Statements slower than this are logged by the worker's slow-query hook.
     slow_query_ms: int = 500
 

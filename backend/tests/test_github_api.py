@@ -8,51 +8,14 @@ not mistaken for one.
 
 import httpx
 import pytest
-import respx
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 
-from app.config import get_settings
-from app.github import api_request, get_limiter, reset_api_state, reset_token_cache
+from app.github import api_request, get_limiter
 from app.ratelimit import RateLimitExceeded
+from tests.conftest import INSTALLATION_ID
 from tests.test_ratelimit import EPOCH, FakeClock, headers, limiter_for
 
-APP_ID = 4_792_446
-INSTALLATION_ID = 158_221_992
-TOKEN_URL = f"https://api.github.com/app/installations/{INSTALLATION_ID}/access_tokens"
 RUNS_URL = "https://api.github.com/repos/noah-n-pham/flakehound/actions/runs"
 RUNS_PATH = "/repos/noah-n-pham/flakehound/actions/runs"
-
-
-@pytest.fixture
-def app_credentials(monkeypatch):
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    pem = key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption(),
-    ).decode()
-    monkeypatch.setenv("GITHUB_APP_ID", str(APP_ID))
-    monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", pem)
-    get_settings.cache_clear()
-    reset_token_cache()
-    reset_api_state()
-    yield
-    get_settings.cache_clear()
-    reset_token_cache()
-    reset_api_state()
-
-
-@pytest.fixture
-def token_route():
-    with respx.mock(assert_all_called=False) as router:
-        router.post(TOKEN_URL).mock(
-            return_value=httpx.Response(
-                201,
-                json={"token": "ghs_installation", "expires_at": "2099-01-01T00:00:00Z"},
-            )
-        )
-        yield router
 
 
 def ok(payload: object = None, **limits: object) -> httpx.Response:
