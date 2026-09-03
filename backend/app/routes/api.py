@@ -9,6 +9,14 @@ third that has to be remembered rather than enforced:
   which is exactly the fact being protected.
 * **A new endpoint under `/api` is not automatically filtered.** The router's
   dependency supplies the ids; it cannot make a query use them.
+
+Every query here also requires `source = 'installed'`. Observed repos — the public
+board's crawled ones — belong to no installation and therefore to no user, so GitHub's
+installations API can never name one and the authorized set can never contain one. The
+predicate is redundant against a correct BFF and kept anyway: it is what stops a bug in
+the BFF's resolution, or a forged header, from putting a stranger's repository on
+somebody's dashboard. Observed data is public, so this is a correctness guarantee rather
+than a privacy one — `/public/flaky` is where those repos are meant to appear.
 """
 
 from datetime import date, datetime
@@ -29,6 +37,8 @@ from app.usage import GroupBy, duration_trend, minutes_attribution
 router = APIRouter(prefix="/api", dependencies=[Depends(require_internal_token)])
 
 SessionDep = Annotated[AsyncSession, Depends(session_scope)]
+
+INSTALLED = "installed"
 
 
 class RepoSummary(BaseModel):
@@ -124,16 +134,19 @@ class DurationPoint(BaseModel):
 
 
 async def _require_repo(session: AsyncSession, repo_id: int, authorized: list[int]) -> None:
-    """404 unless this repo both exists and is one the caller may see.
+    """404 unless this repo exists, is installed, and is one the caller may see.
 
     The authorization check is part of the same query rather than a branch in front of
     it, so "does it exist" and "may you see it" cannot answer differently — and an
-    unauthorized repo is indistinguishable from a missing one in the response.
+    unauthorized repo is indistinguishable from a missing one in the response. An
+    observed repo is 404 here for the same reason: it is nobody's repo.
     """
     exists = (
         await session.execute(
             select(Repository.id).where(
-                Repository.id == repo_id, Repository.id.in_(authorized)
+                Repository.id == repo_id,
+                Repository.id.in_(authorized),
+                Repository.source == INSTALLED,
             )
         )
     ).scalar_one_or_none()
@@ -155,7 +168,7 @@ async def list_repos(session: SessionDep, authorized: AuthorizedRepos) -> list[R
                 func.max(Job.completed_at).label("last_job_at"),
             )
             .outerjoin(Job, Job.repo_id == Repository.id)
-            .where(Repository.id.in_(authorized))
+            .where(Repository.id.in_(authorized), Repository.source == INSTALLED)
             .group_by(Repository.id)
             .order_by(Repository.full_name)
         )

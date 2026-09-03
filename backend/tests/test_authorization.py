@@ -8,9 +8,12 @@ the second repo is absent, and that absence is indistinguishable from the repo n
 existing.
 """
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.auth import AUTHORIZED_REPOS_HEADER
+from app.detection import evaluate_job
+from app.models import Job, Repository, Workflow, WorkflowRun
 from app.rollup import rollup_repository
 from tests.helpers import deliver
 from tests.payloads import REPO_ID
@@ -19,6 +22,10 @@ from tests.test_detection import OTHER_RUN_ID, OTHER_WORKFLOW_ID, RUN_ID, attemp
 from tests.test_public import in_repo
 
 OTHER_REPO_ID = REPO_ID + 1
+OBSERVED_REPO_ID = REPO_ID + 2
+OBSERVED_RUN_ID = OTHER_RUN_ID + 100
+OBSERVED_WORKFLOW_ID = OTHER_WORKFLOW_ID + 100
+OBSERVED_SHA = "c" * 40
 
 
 def headers(*repo_ids: int) -> dict[str, str]:
@@ -47,6 +54,70 @@ async def seed_two_repos(session) -> None:
     )
     for repo_id in (REPO_ID, OTHER_REPO_ID):
         await rollup_repository(session, repo_id=repo_id)
+
+
+async def seed_observed_repo(session) -> None:
+    """A public repo with no installation, whose history was crawled rather than pushed.
+
+    Written directly rather than through `deliver()` on purpose: a webhook cannot
+    describe this repo, because there is no installation to send one. Everything after
+    the rows themselves is the existing machinery unchanged — real Signal A detection
+    over two real attempts, then the ordinary rollup.
+    """
+    session.add(
+        Repository(
+            id=OBSERVED_REPO_ID,
+            installation_id=None,
+            source="observed",
+            owner="astral-sh",
+            name="uv",
+            full_name="astral-sh/uv",
+            private=False,
+        )
+    )
+    session.add(Workflow(id=OBSERVED_WORKFLOW_ID, repo_id=OBSERVED_REPO_ID, name="ci"))
+    await session.flush()
+
+    started = datetime.now(UTC) - timedelta(hours=1)
+    for attempt_number, conclusion in ((1, "failure"), (2, "success")):
+        session.add(
+            WorkflowRun(
+                run_id=OBSERVED_RUN_ID,
+                run_attempt=attempt_number,
+                repo_id=OBSERVED_REPO_ID,
+                workflow_id=OBSERVED_WORKFLOW_ID,
+                head_sha=OBSERVED_SHA,
+                conclusion=conclusion,
+                run_started_at=started,
+            )
+        )
+        await session.flush()
+        session.add(
+            Job(
+                id=OBSERVED_RUN_ID * 10 + attempt_number,
+                run_id=OBSERVED_RUN_ID,
+                run_attempt=attempt_number,
+                repo_id=OBSERVED_REPO_ID,
+                workflow_id=OBSERVED_WORKFLOW_ID,
+                head_sha=OBSERVED_SHA,
+                name="test (ubuntu-latest, 3.12)",
+                status="completed",
+                conclusion=conclusion,
+                started_at=started,
+                completed_at=started + timedelta(minutes=2),
+                step_count=3,
+                completed_step_count=3,
+            )
+        )
+    await session.flush()
+
+    await evaluate_job(
+        session,
+        repo_id=OBSERVED_REPO_ID,
+        run_id=OBSERVED_RUN_ID,
+        job_name="test (ubuntu-latest, 3.12)",
+    )
+    await rollup_repository(session, repo_id=OBSERVED_REPO_ID)
 
 
 def names(rows: list[dict[str, Any]]) -> list[str]:
@@ -202,3 +273,49 @@ async def test_the_public_board_is_exempt_from_the_header(client, db_session):
     # board answers with real rows and no authorized set — while still excluding the
     # private repo that the authorized reads above needed a header to reach.
     assert {row["repo_full_name"] for row in response.json()} == {"khoi/flakehound"}
+
+
+# --------------------------------------------------------------------------- #
+# Observed repos belong to the public board and to nobody's dashboard
+# --------------------------------------------------------------------------- #
+
+
+async def test_an_observed_repo_is_on_the_public_board_but_not_in_any_repo_list(
+    client, db_session
+):
+    """An observed repo belongs to no installation, so it is nobody's repo.
+
+    GitHub's installations API can never name one, so the authorized set can never
+    contain one — but the `source = 'installed'` predicate is what makes that structural
+    rather than a property of the BFF being correct.
+    """
+    await seed_two_repos(db_session)
+    await seed_observed_repo(db_session)
+
+    board = await client.get("/public/flaky", params={"window_days": 90})
+    listed = await client.get("/api/repos", headers=headers(REPO_ID, OBSERVED_REPO_ID))
+
+    assert "astral-sh/uv" in {row["repo_full_name"] for row in board.json()}
+    assert names(listed.json()) == ["khoi/flakehound"]
+
+
+async def test_a_forged_header_still_cannot_read_an_observed_repo(client, db_session):
+    """The predicate earns its keep only in this case, so it is worth asserting.
+
+    A caller holding the internal token and naming the observed repo id directly is the
+    one way an observed repo could reach an authenticated endpoint. It is a 404, the same
+    as a repo that does not exist.
+    """
+    await seed_two_repos(db_session)
+    await seed_observed_repo(db_session)
+
+    jobs = await client.get(
+        f"/api/repos/{OBSERVED_REPO_ID}/jobs", headers=headers(OBSERVED_REPO_ID)
+    )
+    flaky = await client.get(
+        f"/api/repos/{OBSERVED_REPO_ID}/flaky", headers=headers(OBSERVED_REPO_ID)
+    )
+    missing = await client.get("/api/repos/999999999/jobs", headers=headers(OBSERVED_REPO_ID))
+
+    assert jobs.status_code == flaky.status_code == 404
+    assert jobs.json() == missing.json()

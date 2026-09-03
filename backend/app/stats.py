@@ -176,10 +176,19 @@ async def public_flaky_jobs(
     caller could supply to reach a private repo, and no way to forget the filter and
     still get rows back — the join is where the repo's name comes from.
 
-    `active = false` is excluded too, which is stricter than strictly needed. It means an
-    uninstalled repo drops off the public board: removing the App is the nearest thing
-    to withdrawing consent, and continuing to publish a repo's data afterwards is not
-    defensible.
+    `active = false` is excluded too, and it now means **two different things** depending
+    on how the repo got here — the board spans both kinds.
+
+    For an **installed** repo it is consent: removing the App is the nearest thing to
+    withdrawing it, and continuing to publish that repo's data afterwards is not
+    defensible. For an **observed** repo there was never consent to withdraw, so the flag
+    instead records whether the repo is still a legitimate subject — public, non-archived,
+    and still there. One that went private, was archived, or was deleted is deactivated by
+    the crawl and leaves the board through this same predicate.
+
+    Both readings share the one behaviour that matters, which is why a single flag carries
+    both: `active = false` means "stop publishing this", and the rows already in
+    `job_stats_daily` stay rather than being deleted, because they were true when written.
 
     Served from the rollup like every other aggregate, so the same window rules apply
     as `flaky_jobs()` — a whole number of UTC days, current to the last sweep.

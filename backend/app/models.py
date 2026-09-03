@@ -41,6 +41,9 @@ from app.db import Base
 QUEUE_STATUSES = ("pending", "processing", "done", "failed")
 BACKFILL_STATUSES = ("pending", "running", "done", "failed")
 SIGNALS = ("rerun_recovery", "same_commit_disagreement")
+# How we came to know a repository. `installed` has a GitHub App installation behind
+# it; `observed` was crawled from public GitHub and has none.
+REPO_SOURCES = ("installed", "observed")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -94,13 +97,25 @@ class Installation(Base):
 
 
 class Repository(Base):
-    """One per repo, keyed on GitHub's repo id. Carries the backfill cursor."""
+    """One per repo, keyed on GitHub's repo id. Carries the backfill cursor.
+
+    A repo is either **installed** — belonging to a GitHub App installation, which is
+    how every repo got here before the public board existed — or **observed**, crawled
+    from public GitHub with no installation behind it.
+
+    `installation_id` is therefore nullable, and NULL is the *only* way to say "nobody
+    installed this". Inventing an installation row to satisfy the old foreign key was
+    the alternative, and it would have made the installation counter a lie.
+    """
 
     __tablename__ = "repositories"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
-    installation_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("installations.id"), nullable=False
+    installation_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("installations.id")
+    )
+    source: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'installed'")
     )
     owner: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -124,6 +139,17 @@ class Repository(Base):
 
     __table_args__ = (
         CheckConstraint(_in("backfill_status", BACKFILL_STATUSES), name="backfill_status"),
+        CheckConstraint(_in("source", REPO_SOURCES), name="source"),
+        # **The privacy guarantee of the public board, as a constraint rather than a
+        # convention.** An observed repo must be public and must have no installation;
+        # an installed one must have an installation. So a private repo can never be
+        # observed, and no amount of care or forgetting on the write path can change
+        # that — the database refuses the row. SPEC §4 states it in exactly these terms.
+        CheckConstraint(
+            "(source = 'installed' AND installation_id IS NOT NULL)"
+            " OR (source = 'observed' AND installation_id IS NULL AND private = false)",
+            name="source_installation",
+        ),
         Index("ix_repositories_installation_id", "installation_id"),
         # /public/flaky filters on this.
         Index("ix_repositories_public", "id", postgresql_where=text("private = false")),

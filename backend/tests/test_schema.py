@@ -38,6 +38,22 @@ async def seed_repo(session: AsyncSession) -> Repository:
     return repo
 
 
+OBSERVED_REPO_ID = 900_002
+
+
+def observed_repo(*, private: bool = False, installation_id: int | None = None) -> Repository:
+    """A repo crawled from public GitHub. No installation, and it must be public."""
+    return Repository(
+        id=OBSERVED_REPO_ID,
+        installation_id=installation_id,
+        source="observed",
+        owner="astral-sh",
+        name="uv",
+        full_name="astral-sh/uv",
+        private=private,
+    )
+
+
 def make_run(run_id: int, attempt: int, conclusion: str | None = None) -> WorkflowRun:
     return WorkflowRun(
         run_id=run_id,
@@ -196,3 +212,116 @@ async def test_a_rollup_row_is_unique_per_repo_workflow_job_and_day(db_session):
         async with db_session.begin_nested():
             db_session.add(stats())
             await db_session.flush()
+
+
+# --------------------------------------------------------------------------- #
+# Installed or observed — SPEC §4's two kinds of repository
+#
+# The pairing of `source` with `installation_id` and `private` is the public board's
+# privacy guarantee, and the point of putting it in the database is that it holds
+# against a write path that forgets. So these tests attack the constraint directly
+# rather than going through an upsert.
+# --------------------------------------------------------------------------- #
+
+
+async def test_an_observed_repo_needs_no_installation(db_session):
+    """The row the old NOT NULL made impossible, and the reason for this migration."""
+    db_session.add(observed_repo())
+    await db_session.flush()
+
+    stored = await db_session.get(Repository, OBSERVED_REPO_ID)
+    assert (stored.source, stored.installation_id, stored.private) == ("observed", None, False)
+
+
+async def test_an_observed_repo_cannot_be_private(db_session):
+    """**The guarantee.** No care on the write path is required for this to hold."""
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(observed_repo(private=True))
+            await db_session.flush()
+
+
+async def test_an_observed_repo_cannot_carry_an_installation(db_session):
+    """The other half of the pairing: `source` cannot disagree with the foreign key."""
+    await seed_repo(db_session)
+
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(observed_repo(installation_id=INSTALLATION_ID))
+            await db_session.flush()
+
+
+async def test_an_installed_repo_still_requires_an_installation(db_session):
+    """Nullability was relaxed for observed repos only. An installed repo is unchanged."""
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(
+                Repository(
+                    id=OBSERVED_REPO_ID,
+                    installation_id=None,
+                    owner="khoi",
+                    name="thing",
+                    full_name="khoi/thing",
+                    private=False,
+                )
+            )
+            await db_session.flush()
+
+
+async def test_a_repo_is_installed_unless_it_says_otherwise(db_session):
+    """The server default, which is what carried every pre-existing row through."""
+    repo = await seed_repo(db_session)
+
+    assert repo.source == "installed"
+
+
+async def test_source_refuses_a_third_kind_of_repo(db_session):
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            repo = observed_repo()
+            repo.source = "vendored"
+            db_session.add(repo)
+            await db_session.flush()
+
+
+async def test_an_observed_repo_that_installs_the_app_upgrades_in_place(db_session):
+    """SPEC §4: "becomes installed in place, under the same GitHub repo id".
+
+    This is why `source` is a column rather than a second table. The upgrade keeps the
+    row, so it keeps its crawled history, its backfill cursor, and every fact and flake
+    event pointing at it — no duplicate repo, no re-crawl, and no identity change.
+    """
+    db_session.add(Installation(id=INSTALLATION_ID, account_login="astral-sh"))
+    db_session.add(observed_repo())
+    await db_session.flush()
+    db_session.add(
+        WorkflowRun(
+            run_id=11,
+            run_attempt=1,
+            repo_id=OBSERVED_REPO_ID,
+            head_sha=SHA,
+            conclusion="failure",
+        )
+    )
+    await db_session.flush()
+
+    upgraded = await db_session.get(Repository, OBSERVED_REPO_ID)
+    upgraded.source = "installed"
+    upgraded.installation_id = INSTALLATION_ID
+    await db_session.flush()
+
+    count = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(Repository)
+            .where(Repository.full_name == "astral-sh/uv")
+        )
+    ).scalar_one()
+    assert count == 1
+    # The run was crawled against the observed repo and still points at the same id.
+    runs = (
+        await db_session.execute(
+            select(WorkflowRun.run_id).where(WorkflowRun.repo_id == OBSERVED_REPO_ID)
+        )
+    ).scalars()
+    assert list(runs) == [11]
