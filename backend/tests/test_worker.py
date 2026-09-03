@@ -1,4 +1,4 @@
-"""Dequeue semantics and the workflow_job path (SPEC §5, §6)."""
+"""Dequeue semantics and the workflow_job path."""
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -131,7 +131,7 @@ async def test_a_rerun_is_stored_as_a_second_attempt(db_session):
 
 
 async def test_processing_the_same_payload_twice_changes_nothing(db_session):
-    """Idempotency layer 2, in miniature. The 100x replay test lands in Section C."""
+    """Idempotency layer 2, in miniature. `test_replay_100x.py` is the full version."""
     enqueue(db_session, payloads.workflow_job())
     await db_session.flush()
     sessionmaker = _one_session_factory(db_session)

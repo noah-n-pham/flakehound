@@ -1,10 +1,14 @@
 # flakehound
 
-Finds flaky CI jobs from GitHub Actions history you already have. One-click
-install as a GitHub App — no workflow file changes, no test-suite instrumentation.
+Detects flaky CI in GitHub Actions from the history you already have. One-click
+install as a GitHub App — no workflow file changes, no test-suite instrumentation,
+nothing uploaded from inside a test job.
 
-Stage 1 detects flaky **jobs**, not flaky **tests**. That is the honest tradeoff
-of reading the Actions API instead of asking you to upload JUnit XML.
+Flakiness is measured at the **job** level, from the Actions API alone. A flake is a
+job that failed and then passed with the commit unchanged: either across the attempts
+of one run, or against a sibling job on the same SHA. The leaderboard ranks by the
+lower bound of a 95% Wilson score interval rather than by raw rate, so a job that
+flaked once in three runs never outranks one that flaked forty times in a thousand.
 
 ## Layout
 
@@ -67,5 +71,5 @@ npm run dev:local     # reads ../.env, so the internal token lives in one file
 
 `dev:local` points the BFF at whatever `API_BASE_URL` says — the deployed API by
 default, so the page shows production data without running anything locally.
-`/styleguide` renders every primitive in `docs/DESIGN.md` that the app uses; add a
-component there before using it anywhere else.
+`/styleguide` renders every design primitive the app uses; add a component there
+before using it anywhere else.

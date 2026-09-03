@@ -9,10 +9,8 @@ import {
 export const metadata = { title: "not found" };
 
 /**
- * Next's default 404 is a white page in a system font. The human hit it at turn 40
- * by visiting a URL I had written into an instruction before building the page, and
- * a stranger will hit it by mistyping — either way it should look like the rest of
- * the site and say where to go.
+ * Next's default 404 is a white page in a system font. A mistyped URL should still
+ * look like the rest of the site and say where to go instead.
  */
 export default function NotFound() {
   return (

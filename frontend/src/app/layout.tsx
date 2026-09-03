@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     default: "flakehound",
     template: "%s — flakehound",
   },
-  description: "flaky ci jobs, found from history you already have",
+  description: "flaky ci detection, from the github actions history you already have",
 };
 
 export default function RootLayout({

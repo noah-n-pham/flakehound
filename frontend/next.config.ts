@@ -2,9 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Next writes AGENTS.md and CLAUDE.md into this folder on every dev start.
-  // This repository is public and the build scaffolding is not part of the
-  // product — the same reason docs/ and .cursor/ are untracked.
+  // Suppress the assistant instruction files Next writes into this folder on every
+  // dev start; they are editor tooling rather than part of the application.
   agentRules: false,
 };
 

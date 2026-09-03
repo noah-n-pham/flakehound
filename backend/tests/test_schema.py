@@ -1,4 +1,4 @@
-"""The data-model invariants of SPEC §4, asserted against real Postgres."""
+"""The data-model invariants, asserted against real Postgres."""
 
 from datetime import UTC, date, datetime
 

@@ -7,6 +7,6 @@ router = APIRouter()
 async def healthz() -> dict[str, str]:
     """Liveness only — deliberately touches no database.
 
-    One of exactly three unauthenticated endpoints (SPEC §8).
+    One of exactly three unauthenticated endpoints.
     """
     return {"status": "ok"}

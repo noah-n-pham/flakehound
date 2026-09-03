@@ -1,4 +1,4 @@
-"""The Wilson interval and the leaderboard ranked by its lower bound (SPEC §2).
+"""The Wilson interval and the leaderboard ranked by its lower bound.
 
 The reference values below are the published 95% Wilson intervals for those counts,
 not this implementation's own output — a test that recomputed the formula would only
@@ -36,7 +36,7 @@ async def leaderboard(session, *, repo_id: int = REPO_ID, **kwargs):
 
 
 def test_zero_opportunities_has_no_interval():
-    """SPEC §2's edge-case table: undefined, so return null rather than divide by zero."""
+    """Undefined with no opportunities, so return null rather than divide by zero."""
     assert wilson_interval(0, 0) is None
 
 
@@ -147,7 +147,7 @@ async def test_the_numerator_counts_flaky_job_runs_not_event_rows(db_session):
 
 
 async def test_both_signals_naming_one_job_run_count_it_once(db_session):
-    """A re-run recovery records two events (D-033) and must not be counted twice."""
+    """A re-run recovery records two events and must not be counted twice."""
     await deliver(
         db_session,
         run_event(run_id=RUN_ID),
@@ -198,7 +198,7 @@ async def test_another_repos_flake_events_do_not_leak_in(db_session):
 
 
 async def test_two_runs_disagreeing_put_every_run_in_the_group_at_risk(db_session):
-    """SPEC §2 Signal B: each run in a disagreeing group is part of a flake event."""
+    """Signal B: each run in a disagreeing group is part of a flake event."""
     await deliver(
         db_session,
         run_event(run_id=RUN_ID),

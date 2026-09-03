@@ -1,4 +1,4 @@
-"""Per-installation rate limiting for the GitHub API (SPEC §7).
+"""Per-installation rate limiting for the GitHub API.
 
 An installation token gets on the order of 5,000 requests an hour. That budget
 belongs to the installation, not to us, so a local counter is only ever a guess —
@@ -220,7 +220,7 @@ class RateLimiter:
             bucket.blocked_until = max(bucket.blocked_until, now + retry_after)
 
     def headroom(self, installation_id: int) -> float:
-        """Requests believed available right now. SPEC §9 reports this."""
+        """Requests believed available right now; reported as a metric."""
         bucket = self.bucket(installation_id)
         bucket.advance(self._clock.monotonic())
         return bucket.tokens

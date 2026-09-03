@@ -2,7 +2,7 @@
 
 Only the fields the product reads are present; a real delivery carries far more.
 Note what is *absent* from `workflow_job`: there is no `workflow_id`, which is
-why a job's run row has to be stubbed before the job can be stored (D-005).
+why a job's run row has to be stubbed before the job can be stored.
 """
 
 from typing import Any

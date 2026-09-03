@@ -1,6 +1,6 @@
-"""Every entity in SPEC §4, in one place.
+"""Every entity in the data model, in one place.
 
-Identity keys are binding and freeze at Checkpoint 1:
+Identity keys are fixed:
 
 * an installation, repository, workflow, job, and delivery are keyed on the id
   GitHub gives them;
@@ -48,7 +48,7 @@ def _in(column: str, values: tuple[str, ...]) -> str:
 
 
 def created_at_column() -> Mapped[datetime]:
-    """Retained on fact tables so partitioning stays possible later (SPEC §4)."""
+    """Retained on fact tables so partitioning stays possible later."""
     return mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -94,7 +94,7 @@ class Installation(Base):
 
 
 class Repository(Base):
-    """One per repo, keyed on GitHub's repo id. Carries the backfill cursor (SPEC §7)."""
+    """One per repo, keyed on GitHub's repo id. Carries the backfill cursor."""
 
     __tablename__ = "repositories"
 
@@ -152,7 +152,7 @@ class Workflow(Base):
 
 
 class WebhookDelivery(Base):
-    """Idempotency layer 1. The primary key *is* the dedup mechanism (SPEC §6).
+    """Idempotency layer 1. The primary key *is* the dedup mechanism.
 
     A duplicate delivery raises a unique violation, which the handler catches and
     answers 202 without enqueueing.
@@ -170,7 +170,7 @@ class WebhookDelivery(Base):
 
 
 class EventQueue(Base):
-    """The work list, dequeued with FOR UPDATE SKIP LOCKED (SPEC §5).
+    """The work list, dequeued with FOR UPDATE SKIP LOCKED.
 
     `delivery_id` is nullable on purpose: backfill work is enqueued by the worker
     and has no inbound delivery behind it. Live rows are inserted in the same
@@ -282,8 +282,7 @@ class Job(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     runner_name: Mapped[str | None] = mapped_column(Text)
     runner_labels: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
-    # Zero completed steps is how a dead runner is told from a test failure
-    # (SPEC §2 edge-case table).
+    # Zero completed steps is how a dead runner is told from a test failure.
     step_count: Mapped[int | None] = mapped_column(Integer)
     completed_step_count: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = created_at_column()
@@ -363,10 +362,10 @@ class FlakeEvent(Base):
 
 
 class JobStatsDaily(Base):
-    """The rollup every read endpoint is served from — never raw facts (SPEC §8).
+    """The rollup every read endpoint is served from — never raw facts.
 
     One row per (repo, workflow, job name, UTC day). `opportunities` and `flakes`
-    are SPEC §2's two counts, so a window of these rows sums to the same flake rate
+    are the flake rate's two counts, so a window of these rows sums to the same rate
     the raw facts give — see `app/rollup.py` for why each count is what it is.
     """
 
@@ -407,7 +406,7 @@ class JobStatsDaily(Base):
 
 
 class MetricsSnapshot(Base):
-    """One row per counter per minute (SPEC §9). Labels carry per-installation series."""
+    """One row per counter per minute. Labels carry per-installation series."""
 
     __tablename__ = "metrics_snapshots"
 

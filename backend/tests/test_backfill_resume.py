@@ -314,7 +314,7 @@ async def test_a_crawl_interrupted_after_every_single_row_still_converges(
 
     Once each, not repeatedly. `claim_batch` counts the attempt, so a row
     abandoned `max_attempts` times stops being claimable and is dead-lettered —
-    which is turn 22's deliberate design, not a resume bug. The assertion that
+    that is the queue working as designed, not a resume bug. The assertion that
     nothing reached `failed` is what keeps this test honest about the difference.
     """
     await seed_repo(db_session)

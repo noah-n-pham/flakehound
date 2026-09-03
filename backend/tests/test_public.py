@@ -1,4 +1,4 @@
-"""`/public/flaky` — the only read endpoint with no auth (SPEC §8, §8b).
+"""`/public/flaky` — the only read endpoint with no auth.
 
 Every test here is really one question: can anything a stranger says, or anything the
 build forgets, put a private repo's data on this board. So the filter is attacked from
@@ -152,7 +152,7 @@ async def test_a_repo_flipped_to_private_drops_off_the_board(client, db_session)
 
 
 async def test_an_uninstalled_repo_drops_off_the_board(client, db_session):
-    """D-042: removing the App is the nearest thing to withdrawing consent."""
+    """Removing the App is the nearest thing to withdrawing consent."""
     await seed_three_repos(db_session)
 
     await db_session.execute(

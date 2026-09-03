@@ -1,4 +1,4 @@
-"""Being rate limited is not failing (D-040).
+"""Being rate limited is not failing.
 
 The queue has one way to put a row back — `mark_for_retry` — and it counts the
 attempt the claim already incremented. Applied to a rate limit that is the wrong

@@ -9,7 +9,7 @@ _configured = False
 
 
 def configure_logging() -> None:
-    """JSON logs to stdout, which is where CloudWatch reads them from (SPEC §9)."""
+    """JSON logs to stdout, which is where CloudWatch reads them from."""
     global _configured
     if _configured:
         return

@@ -1,8 +1,8 @@
 """Operational readouts. Token-gated — "internal" is a name, not a boundary.
 
 The tunnel routes the whole hostname, so `/internal/metrics` is exactly as reachable
-from the internet as `/api` is. SPEC §8 is explicit that only `/healthz`,
-`/public/flaky`, and the webhook are unauthenticated: queue depth, installation
+from the internet as `/api` is. Exactly three paths are unauthenticated —
+`/healthz`, `/public/flaky`, and the webhook — because queue depth, installation
 counts, and rate-limit headroom are not for strangers.
 """
 
@@ -41,7 +41,7 @@ class MetricsResponse(BaseModel):
 
 @router.get("/metrics")
 async def metrics(session: SessionDep) -> MetricsResponse:
-    """The newest point of every series still reporting (SPEC §9).
+    """The newest point of every series still reporting.
 
     Each point carries its own timestamp because two processes write these counters on
     independent timers — the worker the database-derived ones, the API its own — and a

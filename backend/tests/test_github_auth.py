@@ -1,7 +1,7 @@
-"""App JWT → installation token, and the cache in front of it (SPEC §7).
+"""App JWT → installation token, and the cache in front of it.
 
 The RSA key here is generated per test session and never leaves memory. The real
-one lives at `~/flakehound-app.pem` (H-012) and is not read by the suite.
+one lives outside the repository and is never read by the suite.
 External HTTP is respx, never live.
 """
 

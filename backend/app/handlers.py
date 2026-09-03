@@ -56,7 +56,7 @@ async def _ensure_repo(session: AsyncSession, payload: dict[str, Any]) -> int:
 
 
 async def handle_workflow_job(session: AsyncSession, payload: dict[str, Any]) -> None:
-    """A job event carries no workflow id, so its run is stubbed first (D-005)."""
+    """A job event carries no workflow id, so its run is stubbed first."""
     job = payload.get("workflow_job") or {}
     if not job.get("id"):
         raise ValueError("workflow_job payload has no job")
@@ -125,7 +125,7 @@ async def handle_workflow_run(session: AsyncSession, payload: dict[str, Any]) ->
 
 
 async def handle_installation(session: AsyncSession, payload: dict[str, Any]) -> None:
-    """install, uninstall, suspend (SPEC §7).
+    """install, uninstall, suspend.
 
     The account fields arrive here and nowhere else: every other event carries
     only `installation.id`, which is why an installation row can exist as a stub
@@ -190,7 +190,7 @@ async def handle_installation(session: AsyncSession, payload: dict[str, Any]) ->
 async def handle_installation_repositories(
     session: AsyncSession, payload: dict[str, Any]
 ) -> None:
-    """Repos added to or removed from an existing install (SPEC §7)."""
+    """Repos added to or removed from an existing install."""
     installation = payload.get("installation") or {}
     installation_id = installation.get("id")
     if not installation_id:

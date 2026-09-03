@@ -1,11 +1,12 @@
 /**
- * Resolving which repos the signed-in person may see (SPEC §8b).
+ * Resolving which repos the signed-in person may see.
  *
  * This is the only place the *user's* GitHub token is used. It is read out of the
  * session JWT rather than off the session object, because the session object is
- * what `auth()` hands to any caller — see D-043. Server-side only.
+ * what `auth()` hands to any caller, and this token should never travel that far.
+ * Server-side only.
  *
- * SPEC §8b names the two endpoints and they are both needed:
+ * Two endpoints are needed, not one:
  *
  *     GET /user/installations                    → installations this user can reach
  *     GET /user/installations/{id}/repositories  → the repos in one, *for this user*
@@ -23,10 +24,10 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const PER_PAGE = 100;
 
 /**
- * In-process, keyed by GitHub user id, five minutes — exactly what SPEC §8b asks for.
+ * In-process, keyed by GitHub user id, five minutes.
  *
- * In process rather than in Redis because there is one server process and the
- * constraints file rules out a cache server; in process rather than in the JWT because
+ * In process rather than in Redis because there is one server process and a cache
+ * server would earn nothing here; in process rather than in the JWT because
  * a server component cannot write cookies, so a JWT-held cache could never be
  * refreshed without bouncing the user through GitHub again.
  */

@@ -1,4 +1,4 @@
-"""Recording an inbound delivery and queuing its work — atomically (SPEC §3, §6)."""
+"""Recording an inbound delivery and queuing its work — atomically."""
 
 from typing import Any
 

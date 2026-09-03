@@ -1,4 +1,4 @@
-"""Read endpoints and the internal bearer token (SPEC §8)."""
+"""Read endpoints and the internal bearer token."""
 
 from app.auth import AUTHORIZED_REPOS_HEADER
 from app.config import get_settings
@@ -21,7 +21,7 @@ def auth() -> dict[str, str]:
 
 
 def reader(*repo_ids: int) -> dict[str, str]:
-    """What the BFF sends: the token plus the repo ids this caller may see (SPEC §8b).
+    """What the BFF sends: the token plus the repo ids this caller may see.
 
     Defaults to the fixture repo, because that is what almost every test here wants.
     """

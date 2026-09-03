@@ -1,7 +1,7 @@
-"""Several workers on one queue (SPEC §5).
+"""Several workers on one queue.
 
-SPEC: "`SKIP LOCKED` is the whole trick — concurrent workers never block each
-other and never receive the same row."
+`SKIP LOCKED` is the whole trick: concurrent workers never block each other and
+never receive the same row.
 
 Every test here commits for real, because a lock is only observable across
 connections, so each one truncates afterwards.

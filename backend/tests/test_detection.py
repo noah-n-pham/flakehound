@@ -1,13 +1,13 @@
-"""Signal A and the rows of SPEC §2's edge-case table that govern eligibility.
+"""Signal A, and the edge cases that govern which job runs are eligible at all.
 
 The first test is not a fixture invention. `build and deploy` in this project's own
 repository failed on attempt 1, failed on attempt 2, and passed on attempt 3, all at
 commit 995d950 — job ids, step counts, and run id below are the rows sitting in
 production. **Nothing flaked.** The first two attempts failed because an IAM trust
 policy was wrong and it was fixed between attempts, so an external change is what
-recovered the job. Signal A cannot see that and must fire anyway (D-030): from the
-Actions API alone this is indistinguishable from a flaky job, the SHA is identical
-so "did the code change" does not separate them, and the spec's rule is binding.
+recovered the job. Signal A cannot see that and fires anyway: from the Actions API
+alone this is indistinguishable from a flaky job, and the SHA is identical, so
+"did the code change" does not separate the two.
 The false positive is answered by the Wilson lower bound, which needs sustained
 evidence before anything reaches the top of a leaderboard — not by a heuristic here.
 """
@@ -101,7 +101,7 @@ async def signal(session, name: str) -> list[FlakeEvent]:
 
 @pytest.fixture
 def flag(monkeypatch):
-    """Flip a config flag from SPEC §2's table and drop the settings cache."""
+    """Flip a detection config flag and drop the settings cache."""
 
     def _set(name: str, value: str) -> None:
         monkeypatch.setenv(name, value)
@@ -271,7 +271,7 @@ async def test_a_commit_that_only_ever_failed_is_not_a_disagreement(db_session):
 
 
 async def test_the_same_job_name_in_another_workflow_is_another_group(db_session):
-    """SPEC §2: group by (workflow_id, job_name, head_sha), never by name and SHA alone."""
+    """Group by (workflow_id, job_name, head_sha), never by name and SHA alone."""
     await deliver(
         db_session,
         run_event(run_id=RUN_ID, workflow_id=WORKFLOW_ID, workflow_name="ci"),
@@ -288,7 +288,7 @@ async def test_a_job_is_not_grouped_until_its_workflow_is_known(db_session):
 
     Skipping is the only safe answer — grouping on a NULL workflow would merge the
     two workflows the test above keeps apart. The run event then supplies the id and
-    the jobs stored before it become groupable (D-032).
+    the jobs stored before it become groupable.
     """
     await deliver(
         db_session,
@@ -335,12 +335,12 @@ async def test_a_cancelled_run_cannot_create_a_disagreement(db_session):
 
 
 async def test_a_rerun_recovery_is_also_a_disagreement_once_the_workflow_is_known(db_session):
-    """Both signals fire on one re-run recovery, and that is the literal spec (D-032).
+    """Both signals fire on one re-run recovery, and both are correct.
 
-    SPEC §2 defines a *job run* as `(run_id, run_attempt, job_name)`, so "the set of
-    conclusions across all job runs" in a group includes separate attempts of one
-    run. The overlap is real and is left for the rollup to count, because suppressing
-    it here would mean inventing a rule the spec does not state.
+    A *job run* is `(run_id, run_attempt, job_name)`, so "the set of conclusions
+    across all job runs" in a group includes separate attempts of one run. The
+    overlap is real and is left for the rollup to count, because suppressing it
+    here would mean inventing a rule nothing else follows.
     """
     await deliver(
         db_session,
@@ -359,7 +359,7 @@ async def _job_workflow_ids(session) -> set[int]:
 
 
 # --------------------------------------------------------------------------- #
-# SPEC §2 edge-case table
+# Edge cases
 # --------------------------------------------------------------------------- #
 
 

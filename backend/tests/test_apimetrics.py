@@ -1,4 +1,4 @@
-"""The half of SPEC §9 that only the API process can see.
+"""The half of the metrics story that only the API process can see.
 
 Latency per endpoint and the duplicate-delivery rate are measured in memory, because
 neither can be computed from the database: a request's duration is gone the moment it
@@ -235,7 +235,7 @@ async def test_both_processes_series_survive_writing_in_different_minutes(client
 
     The worker's timer and the API's are independent, so one of them writes into the
     minute the other has already left. Taking "the latest minute" would drop whichever
-    wrote first — which is to say, half of SPEC §9, intermittently.
+    wrote first, intermittently and for no reason a reader could guess.
     """
     get_recorder().observe_request("/healthz", 0.004)
 

@@ -1,4 +1,4 @@
-"""The worker process: claim, handle, mark, repeat (SPEC §3).
+"""The worker process: claim, handle, mark, repeat.
 
 Runs beside the API in the same container. Processing happens here rather than in
 the request handler because it calls GitHub's rate-limited API, and coupling
@@ -132,7 +132,7 @@ async def sweep(sessionmaker: async_sessionmaker) -> SweepResult:
 
 
 async def snapshot_metrics(sessionmaker: async_sessionmaker) -> list[Metric]:
-    """Sample SPEC §9's counters into one minute's rows.
+    """Sample the database-derived counters into one minute's rows.
 
     The worker owns this and the API does not, so the table has exactly one writer
     and two processes can never disagree about a number. It is also the only process

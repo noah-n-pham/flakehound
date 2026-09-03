@@ -51,7 +51,7 @@ def create_app() -> FastAPI:
     async def record_request_latency(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        """SPEC §9's API latency, labelled by route template rather than path.
+        """API latency, labelled by route template rather than path.
 
         The route is only on the scope once the router has matched, which is after
         `call_next` — and on an unmatched path it never appears at all. Recording in a

@@ -1,6 +1,6 @@
-"""Retry, backoff, and the `failed` terminal state (SPEC §5).
+"""Retry, backoff, and the `failed` terminal state.
 
-SPEC: "A raised exception returns it to pending with the error recorded, so it
+The rule: a raised exception returns the row to pending with the error recorded, so it
 retries. Past a small attempt ceiling it stops being selected and is effectively
 dead-lettered; a sweep marks those failed so they are visible rather than
 silently stuck."

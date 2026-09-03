@@ -1,16 +1,12 @@
 import { MetaStrip, Rule } from "@/components/primitives";
 
 /**
- * The bottom of the shell: a hairline, then the same dot-separated mono strip the
- * reference uses under a statistic — here describing how the whole system works
+ * The bottom of the shell: a hairline, then the same dot-separated mono strip that
+ * sits under a statistic elsewhere — here describing how the whole system works
  * rather than one number.
  *
  * Every claim on it is true and checkable, which is the point: this is the place a
  * reader looks to find out whether the numbers above came from somewhere real.
- *
- * There is deliberately **no `github ↗` link**, which the reference nav has. The
- * repository is still private, so the link would 404 for everyone who clicked it. It
- * is one line here when that changes.
  */
 export function Footer() {
   return (

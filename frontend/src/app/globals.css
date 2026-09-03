@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Tokens are docs/DESIGN.md's @theme block. The --color- prefix is load-bearing:
+/* The design tokens, as a Tailwind v4 @theme block. The --color- prefix is load-bearing:
    Tailwind v4 generates the utility classes from that namespace. The three font
    tokens keep their role names and fallbacks but resolve through the variables
    next/font/google assigns, because next/font hashes the real family name. */

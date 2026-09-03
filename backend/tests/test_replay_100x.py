@@ -1,7 +1,7 @@
 """Replaying a delivery 100 times must leave the database as one delivery left it.
 
-SPEC §6 asks for exactly this test and says it is worth more than any architecture
-diagram. It exercises all three idempotency layers at once:
+This single test is worth more than any architecture diagram: it exercises all
+three idempotency layers at once:
 
 * layer 1 — the delivery id is a primary key, so redelivery over HTTP enqueues nothing;
 * layer 2 — every fact write is an upsert on GitHub's own ids, so re-processing a payload
@@ -166,8 +166,8 @@ def full_delivery_set() -> list[dict]:
 async def test_replaying_a_whole_run_100_times_changes_no_fact_and_no_flake_event(db_session):
     """The real shape: three attempts and their run events, replayed out of order.
 
-    This is the test that would have caught turn 19's bug before production did — the
-    conclusion a late `in_progress` body erased is part of the snapshot being compared.
+    The conclusion that a late `in_progress` body would erase is part of the snapshot
+    being compared, so out-of-order regression is caught here rather than in the data.
     """
     lifecycle = full_delivery_set()
 

@@ -12,7 +12,7 @@ def require_internal_token(request: Request) -> None:
     """Guard every endpoint except `/healthz`, `/public/flaky`, and the webhook.
 
     `/internal/metrics` is guarded too: the tunnel routes the whole hostname, so
-    "internal" is a name, not a boundary (SPEC §8).
+    "internal" is a name, not a boundary.
     """
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
     expected = get_settings().internal_api_token
@@ -25,7 +25,7 @@ def require_internal_token(request: Request) -> None:
 
 
 def require_authorized_repos(request: Request) -> list[int]:
-    """The repo ids this request may see, from `X-Authorized-Repo-Ids` (SPEC §8b).
+    """The repo ids this request may see, from `X-Authorized-Repo-Ids`.
 
     The BFF resolves the set from GitHub's installations API and sends it on every
     read; the bearer token is what makes the header trustworthy, because only the

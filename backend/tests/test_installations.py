@@ -1,4 +1,4 @@
-"""The `installation` and `installation_repositories` handlers (SPEC §7).
+"""The `installation` and `installation_repositories` handlers.
 
 The rule these tests exist to pin: an install being removed changes what we
 *watch*, never what we *recorded*. Nothing here deletes a fact.
@@ -129,7 +129,7 @@ async def test_repositories_added_to_an_existing_install(db_session):
 
 
 async def test_a_minimal_repository_leaves_the_branch_unknown_rather_than_guessing(db_session):
-    """Pins the shape of a real `repositories_added` entry (turn 26).
+    """Pins the shape of a real `repositories_added` entry.
 
     An installation event names a repo with five keys and no owner object, so
     `owner` is derived from `full_name` and `default_branch` stays NULL until an

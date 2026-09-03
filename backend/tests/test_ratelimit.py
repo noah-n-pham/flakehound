@@ -1,4 +1,4 @@
-"""The per-installation token bucket (SPEC §7).
+"""The per-installation token bucket.
 
 Time is faked rather than waited on, which is the only way these assertions can
 be exact: a test that really slept would have to assert a range and would take

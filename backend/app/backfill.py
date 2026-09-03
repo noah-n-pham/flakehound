@@ -1,4 +1,4 @@
-"""Walking a repository's Actions history backwards (SPEC §7).
+"""Walking a repository's Actions history backwards.
 
 The runs listing caps at roughly 1000 results no matter how you page it, so the
 history is walked in `created` **date windows** from today backwards, and a
@@ -50,7 +50,7 @@ log = get_logger(__name__)
 
 RUNS_JOB_TYPE = "backfill_runs"
 JOBS_JOB_TYPE = "backfill_jobs"
-# Backfill never competes with a live delivery. SPEC §7 names this number.
+# Backfill never competes with a live delivery: lower priority, always.
 BACKFILL_PRIORITY = 1
 # A matrix wide enough to need more than this many pages of jobs does not exist.
 MAX_JOB_PAGES = 10
@@ -361,7 +361,7 @@ async def handle_backfill_jobs(session: AsyncSession, payload: dict[str, Any]) -
             params={"per_page": settings.backfill_page_size, "page": page},
         )
         if response.status_code == 404:
-            # SPEC §2's last edge case. GitHub discards a re-run's job records
+            # An expected edge case. GitHub discards a re-run's job records
             # after ~30 days while the run itself survives, so this is ordinary
             # for old history and must not fail the row.
             log.info(
@@ -402,7 +402,7 @@ async def _record_job(
     run_id = job["run_id"]
     # An earlier attempt has no row of its own — the listing only described the
     # latest — so it is stubbed from the job the same way a `workflow_job`
-    # webhook stubs its run (D-005). The composite foreign key requires it.
+    # webhook stubs its run. The composite foreign key requires it.
     await upsert_run(
         session,
         repo_id=repo_id,

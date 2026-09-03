@@ -1,13 +1,13 @@
-"""Fact writes must not depend on the order their deliveries are processed in (SPEC §6).
+"""Fact writes must not depend on the order their deliveries are processed in.
 
 GitHub sends three deliveries per job and per run — queued, in progress, completed — and
 nothing guarantees the order they are *processed* in. `claim_batch` chooses which rows to
 claim by priority and age, but `RETURNING` carries no ordering guarantee within a batch,
 and the reaper re-runs abandoned messages beside live ones.
 
-This is a regression suite for a bug that reached production: `upsert_job` wrote `status`
-and `conclusion` outright, so an `in_progress` body applied after the `completed` one
-blanked a real conclusion, and the job silently stopped being an opportunity (turn 19).
+The regression this guards is subtle: writing `status` and `conclusion` outright lets an
+`in_progress` body applied after the `completed` one blank a real conclusion, silently
+removing the job from the set of flake opportunities.
 """
 
 from itertools import permutations
@@ -81,7 +81,7 @@ async def test_a_queued_delivery_cannot_erase_a_conclusion(db_session):
 
 
 async def test_every_processing_order_converges_on_the_same_job_row(db_session):
-    """The property the spec actually asks for: replay in any order, same state."""
+    """The property that matters: replay in any order, same state."""
     fields = (
         Job.status,
         Job.conclusion,

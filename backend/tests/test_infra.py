@@ -29,16 +29,16 @@ def test_settings_default_to_local_compose_postgres():
 
 
 def test_settings_assemble_the_url_from_the_rds_secret_parts(monkeypatch):
-    monkeypatch.setenv("DB_HOST", "flakehound-db.c47a6ai2o1w8.us-east-1.rds.amazonaws.com")
-    monkeypatch.setenv("DB_USER", "ciinsights")
+    monkeypatch.setenv("DB_HOST", "flakehound-db.example.us-east-1.rds.amazonaws.com")
+    monkeypatch.setenv("DB_USER", "flakehound")
     # RDS generates the password, so it may contain characters a URL reads as syntax.
     monkeypatch.setenv("DB_PASSWORD", "p@ss/word:1#2")
     monkeypatch.setenv("DB_NAME", "flakehound")
 
     url = make_url(Settings().database_url)
-    assert url.host == "flakehound-db.c47a6ai2o1w8.us-east-1.rds.amazonaws.com"
+    assert url.host == "flakehound-db.example.us-east-1.rds.amazonaws.com"
     assert url.port == 5432
-    assert url.username == "ciinsights"
+    assert url.username == "flakehound"
     assert url.password == "p@ss/word:1#2"
     assert url.database == "flakehound"
 

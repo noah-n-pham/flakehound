@@ -1,4 +1,4 @@
-"""Ingest: signature, atomic enqueue, and dedup by primary key (SPEC §3, §6)."""
+"""Ingest: signature, atomic enqueue, and dedup by primary key."""
 
 import json
 from typing import Any

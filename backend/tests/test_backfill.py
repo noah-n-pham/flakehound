@@ -1,4 +1,4 @@
-"""The date-windowed backfill and its resumable cursor (SPEC §7).
+"""The date-windowed backfill and its resumable cursor.
 
 GitHub is respx throughout. The database is the real one, because the cursor is
 a database row and the whole point of the design is that it survives.
@@ -473,7 +473,7 @@ async def test_backfilled_attempts_produce_a_flake_event(db_session, github):
 
 
 async def test_a_re_run_older_than_thirty_days_404s_and_that_is_data(db_session, github):
-    """SPEC §2's last edge-case row. GitHub discards a re-run's job records after
+    """GitHub discards a re-run's job records after
     about a month while the run itself survives, so the backfill meets this on
     any real 90-day history. It is ordinary, not a failure."""
     await seed_repo(db_session)

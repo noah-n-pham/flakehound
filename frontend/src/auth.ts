@@ -1,5 +1,5 @@
 /**
- * GitHub login (SPEC §8b). JWT sessions, **no database adapter** — the session is a
+ * GitHub login. JWT sessions, **no database adapter** — the session is a
  * signed cookie, so login adds no tables to RDS and the BFF stays stateless.
  *
  * Identity is forced to be GitHub's: this is a GitHub App, so GitHub is the only

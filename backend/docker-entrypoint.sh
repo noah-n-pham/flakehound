@@ -1,5 +1,5 @@
 #!/bin/bash
-# Three processes, one container (SPEC §11): the API, the worker, and the tunnel.
+# Three processes, one container: the API, the worker, and the tunnel.
 # If any of them dies the container dies, so ECS replaces the task rather than
 # leaving a half-running service that still answers its health check.
 set -euo pipefail

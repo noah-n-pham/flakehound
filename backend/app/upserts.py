@@ -1,4 +1,4 @@
-"""Idempotency layer 2: every fact write is an upsert on GitHub's own ids (SPEC §6).
+"""Idempotency layer 2: every fact write is an upsert on GitHub's own ids.
 
 GitHub's ids are immutable and authoritative, so replaying any payload converges
 to identical state. Enrichment fields use COALESCE(EXCLUDED, existing) wherever a
@@ -39,9 +39,9 @@ def _never_regress(
 
     A payload that is *behind* what we have contributes nothing: an `in_progress` body
     carries a null conclusion and a partial step count, and applying it after the
-    `completed` body would erase a terminal fact. That is not a hypothetical — it
-    happened in production and turned a successful job run into one with no conclusion,
-    which silently removed it from Signal A's opportunities (turn 19).
+    `completed` body would erase a terminal fact. That is not a hypothetical — observed
+    against live deliveries, it turned a successful job run into one with no conclusion,
+    silently removing it from Signal A's opportunities.
 
     `identity_columns` are exempt from the ranking because they carry identity rather than
     progress, but they are **first-write-wins** rather than last: a run's workflow cannot
@@ -121,7 +121,7 @@ async def set_installation_lifecycle(
     Both are written every time rather than merged, because the caller derives
     them from the event's action and always knows both. That makes the write
     last-action-wins: GitHub's installation payload carries no version to rank
-    two of them by, the way a job's `status` ranks job payloads (D-038).
+    two of them by, the way a job's `status` ranks job payloads.
     """
     await session.execute(
         update(Installation)
@@ -258,7 +258,7 @@ async def upsert_run(
     github_created_at: datetime | None = None,
     github_updated_at: datetime | None = None,
 ) -> None:
-    """Upsert one run attempt. Also used to stub a run from a job payload (D-005).
+    """Upsert one run attempt. Also used to stub a run from a job payload.
 
     Every field a job payload cannot supply is merged with COALESCE, so the stub
     never erases what a run event already recorded.
@@ -372,7 +372,7 @@ async def upsert_job(
         runner_labels=list(labels) if isinstance(labels, list) else None,
         step_count=len(steps) if steps else None,
         # Zero must be stored as zero, not as "unknown": steps planned and none
-        # finished is how a dead runner is told from a test failure (SPEC §2).
+        # finished is how a dead runner is told from a test failure.
         completed_step_count=(
             sum(1 for s in steps if s.get("status") == "completed") if steps else None
         ),

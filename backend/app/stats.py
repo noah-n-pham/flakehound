@@ -1,12 +1,12 @@
-"""Flake rate, its confidence interval, and the leaderboard ranking (SPEC §2).
+"""Flake rate, its confidence interval, and the leaderboard ranking.
 
-Ranking by raw rate is the trap the spec calls out: one flake in two runs would
+Ranking by raw rate is the trap: one flake in two runs would
 outrank fifty in a thousand. The rank key is therefore the **lower bound of the
 Wilson score interval at 95% confidence**, which asks "how bad could this job be, at
 worst, given how little we have seen" — so a job needs sustained evidence before it
 climbs, and the interval width is itself the honest statement of what is known.
 
-The point estimate and both bounds are stored and displayed, per SPEC §2.
+The point estimate and both bounds are stored and displayed.
 """
 
 from dataclasses import dataclass
@@ -35,8 +35,8 @@ class Wilson:
 def wilson_interval(flakes: int, opportunities: int, z: float = Z_95) -> Wilson | None:
     """The Wilson score interval for `flakes` out of `opportunities`.
 
-    Returns None when there are no opportunities: the interval is undefined there and
-    SPEC §2's edge-case table says to return null rather than divide by zero.
+    Returns None when there are no opportunities: the interval is undefined there,
+    so null is the honest answer rather than a division by zero.
 
     Unlike the normal approximation, this stays inside [0, 1] and stays sensible at
     p = 0 and p = 1, which is exactly where CI data lives — most jobs never flake, and
@@ -105,7 +105,7 @@ async def flaky_jobs(
 ) -> list[JobFlakiness]:
     """The leaderboard for one repo: jobs ranked by their Wilson lower bound.
 
-    Served from `job_stats_daily`, per SPEC §8 — a window of daily rows summed, rather
+    Served from `job_stats_daily` — a window of daily rows summed, rather
     than a window of job executions scanned. The counts mean exactly what they meant
     when this read raw facts, because the rollup counts through the same
     `opportunity_filter()` and the same evidence job ids (see `app/rollup.py`); what
@@ -176,10 +176,10 @@ async def public_flaky_jobs(
     caller could supply to reach a private repo, and no way to forget the filter and
     still get rows back — the join is where the repo's name comes from.
 
-    `active = false` is excluded too, which the spec does not ask for. It means an
+    `active = false` is excluded too, which is stricter than strictly needed. It means an
     uninstalled repo drops off the public board: removing the App is the nearest thing
     to withdrawing consent, and continuing to publish a repo's data afterwards is not
-    defensible (D-042).
+    defensible.
 
     Served from the rollup like every other aggregate, so the same window rules apply
     as `flaky_jobs()` — a whole number of UTC days, current to the last sweep.
@@ -248,9 +248,9 @@ async def flaky_jobs_from_facts(
     Delete it only alongside that test.
 
     A *flaky job run* is one whose job id a signal named in its evidence. That is the
-    numerator, and it counts the same thing as the denominator — SPEC §2 defines a
-    flake event as "an opportunity satisfying Signal A or B", so both sides are counts
-    of job runs (D-034). Counting event rows instead would mix units and double-count a
+    numerator, and it counts the same thing as the denominator — a flake event is
+    "an opportunity satisfying Signal A or B", so both sides are counts of job
+    runs. Counting event rows instead would mix units and double-count a
     re-run recovery, which both signals legitimately report.
     """
     cutoff = (now or datetime.now(UTC)) - timedelta(days=window_days)

@@ -89,7 +89,7 @@ async def test_a_day_counts_runs_opportunities_failures_and_flakes(db_session):
 
 
 async def test_an_ineligible_run_is_counted_as_a_run_but_not_as_an_opportunity(db_session):
-    """SPEC §2: a cancelled job says nothing about flakiness, but it did execute.
+    """A cancelled job says nothing about flakiness, but it did execute.
 
     Keeping both numbers is what lets minutes attribution count every execution while
     the flake rate's denominator counts only the eligible ones.
@@ -103,7 +103,7 @@ async def test_an_ineligible_run_is_counted_as_a_run_but_not_as_an_opportunity(d
 
 
 async def test_flakes_never_exceed_opportunities(db_session):
-    """Both signals fire on one recovery (D-033) and the same job run must count once.
+    """Both signals fire on one recovery and the same job run must count once.
 
     If it did not, a day could report more flakes than opportunities and the Wilson
     interval would be handed p > 1.
@@ -243,7 +243,7 @@ async def test_late_history_is_picked_up_by_the_next_recompute(db_session):
 
 
 async def test_a_regrouped_day_leaves_no_stale_row_behind(db_session):
-    """A job's workflow arrives late (D-032), so its day regroups under a new key.
+    """A job's workflow arrives late, so its day regroups under a new key.
 
     The old NULL-workflow row has to go, or the leaderboard sums the day twice.
     """

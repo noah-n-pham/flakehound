@@ -1,4 +1,4 @@
-"""The one read endpoint with no authentication at all (SPEC §8, §8b).
+"""The one read endpoint with no authentication at all.
 
 `/healthz` and the webhook are the other two unauthenticated paths, and the webhook
 authenticates by HMAC signature. This router therefore has **no auth dependency by

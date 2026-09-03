@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://ci:ci@localhost:5433/flakehound"
 
-    # RDS generated the master password and holds it in a secret it owns (D-018),
+    # RDS generated the master password and holds it in a secret it owns,
     # so production injects the credential's parts rather than a URL — nobody
     # keeps a second copy of the password to assemble one. When db_host is set
     # these parts replace database_url.
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     github_webhook_secret: str
 
     # Gates every read endpoint. Must be byte-identical here, in Secrets Manager,
-    # and in Vercel's environment (H-004), or every read returns 401.
+    # and in the frontend's environment, or every read returns 401.
     internal_api_token: str
 
     # The App's own identity, for signing the JWT that buys installation tokens.
@@ -49,8 +49,8 @@ class Settings(BaseSettings):
     # must still start. Whoever calls GitHub raises if they are missing.
     github_app_id: int | None = None
     github_app_private_key: str | None = None
-    # Local development points at the .pem on disk (H-012) rather than pasting a
-    # private key into `.env`. Production injects the key itself from Secrets
+    # Local development points at the .pem on disk rather than pasting a private
+    # key into `.env`. Production injects the key itself from Secrets
     # Manager, where there is no file to point at.
     github_app_private_key_path: str | None = None
     github_api_base_url: str = "https://api.github.com"
@@ -59,10 +59,10 @@ class Settings(BaseSettings):
     # a worker sleeping out a limit looks dead and its row is given away.
     github_rate_limit_max_wait_seconds: float = 60.0
 
-    # Statements slower than this are logged by the worker's slow-query hook (SPEC §9).
+    # Statements slower than this are logged by the worker's slow-query hook.
     slow_query_ms: int = 500
 
-    # Metrics (SPEC §9). One sample a minute, as the spec asks. The window is what
+    # Metrics. One sample a minute. The window is what
     # the ingest-lag percentiles are measured over — trailing rather than lifetime,
     # or no amount of current slowness could move the number. Samples are pruned
     # after a month: at ~20 series a minute they would otherwise out-grow the facts.
@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     # however far the traffic overshoots it.
     metrics_sample_limit: int = 512
 
-    # The two config flags SPEC §2's edge-case table asks for, at its defaults. A
+    # The two detection flags, at their defaults. A
     # timed-out job counts as an eligible failure; a job that completed none of its
     # steps is a dead runner rather than a flaky test and is not an opportunity.
     timed_out_is_failure: bool = True
@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     worker_batch_size: int = 10
     worker_poll_seconds: float = 1.0
 
-    # Backfill (SPEC §7). The runs listing caps near 1000 results however you
+    # Backfill. The runs listing caps near 1000 results however you
     # page it, so history is walked in `created` windows rather than by page
     # alone, and a window that overflows the cap is halved until it fits.
     backfill_days: int = 90
@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     # leaderboard should be able to read back.
     rollup_days: int = 90
 
-    # Retry (SPEC §5). The delay before attempt n is base * 2^(n-1), capped, so
+    # Retry. The delay before attempt n is base * 2^(n-1), capped, so
     # the five attempts of the default ceiling span minutes rather than one
     # second — long enough to outlive a Postgres failover or a GitHub blip.
     retry_backoff_seconds: float = 5.0
@@ -107,8 +107,8 @@ class Settings(BaseSettings):
     # **It must exceed maximum processing time**, or the reaper hands a second
     # worker a row the first is still holding. A live handler is a handful of
     # upserts and one detection query — single-digit milliseconds — so five
-    # minutes is three orders of magnitude of headroom. Section D's backfill
-    # makes one row an HTTP crawl; revisit the number then, with a measurement.
+    # minutes is three orders of magnitude of headroom. Backfill makes one row an
+    # HTTP crawl, so the number is worth revisiting there, with a measurement.
     reaper_timeout_seconds: float = 300.0
 
     @model_validator(mode="after")

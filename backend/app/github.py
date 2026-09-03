@@ -1,4 +1,4 @@
-"""Authenticating as the GitHub App, then as one of its installations (SPEC §7).
+"""Authenticating as the GitHub App, then as one of its installations.
 
 Two credentials, and the distinction matters. The **App JWT** is signed locally
 with the App's private key, proves only "I am this App", and can do nothing but
@@ -8,7 +8,7 @@ is scoped to that one installation.
 
 So every API call needs a token, tokens expire, and buying one costs a request.
 The cache is an in-process dict, which is enough because there is exactly one
-worker (SPEC §12 rejects Redis for this).
+worker — a cache server would be a second system to operate for no gain.
 """
 
 import asyncio

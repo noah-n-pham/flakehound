@@ -233,7 +233,7 @@ async def test_a_plain_403_is_a_permissions_error_and_is_returned_not_retried(
 async def test_a_404_is_returned_for_the_caller_to_decide_about(
     app_credentials, token_route
 ):
-    """SPEC §2's last edge case: a re-run after 30+ days 404s from the jobs
+    """A known edge case: a re-run after 30+ days 404s from the jobs
     endpoint. That is data, not a failure, and the backfill has to see it."""
     token_route.get(RUNS_URL).mock(
         return_value=httpx.Response(404, json={"message": "Not Found"}, headers=headers())

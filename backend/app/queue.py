@@ -1,4 +1,4 @@
-"""Claiming, completing, retrying, and dead-lettering queue rows (SPEC §5)."""
+"""Claiming, completing, retrying, and dead-lettering queue rows."""
 
 from dataclasses import dataclass
 from datetime import timedelta
@@ -131,7 +131,7 @@ async def defer(session: AsyncSession, job: ClaimedJob, *, seconds: float, reaso
     This is for being told to wait — a rate limit — rather than for failing.
     `mark_for_retry` is the wrong tool: it counts the attempt the claim already
     incremented, so five rate limits in an hour would dead-letter history work
-    that nothing is wrong with. Deferral is deliberately unbounded (D-040): a
+    that nothing is wrong with. Deferral is deliberately unbounded: a
     rate limit clears when GitHub's window resets, and the wait itself is the
     throttle, so there is no runaway to protect against.
     """
@@ -152,7 +152,7 @@ async def defer(session: AsyncSession, job: ClaimedJob, *, seconds: float, reaso
 
 
 async def reap_stuck(session: AsyncSession) -> list[int]:
-    """Return rows claimed longer than the timeout to pending (SPEC §5).
+    """Return rows claimed longer than the timeout to pending.
 
     A worker killed mid-message leaves its row `processing` forever: the claim
     commits before the work starts, precisely so the row is visible as taken,
@@ -186,7 +186,7 @@ async def reap_stuck(session: AsyncSession) -> list[int]:
 
 
 async def fail_exhausted(session: AsyncSession) -> list[int]:
-    """The sweep SPEC §5 asks for: mark spent rows failed so they are visible.
+    """The sweep that marks spent rows failed, so they are visible.
 
     A row can reach the ceiling while still `pending` — the worker died between
     the claim and recording the outcome, so the reaper returned it, or the

@@ -1,6 +1,6 @@
-"""The stuck-row reaper: crash recovery (SPEC §5).
+"""The stuck-row reaper: crash recovery.
 
-SPEC: "A worker killed mid-message leaves a row claimed forever. A periodic sweep
+A worker killed mid-message leaves a row claimed forever. A periodic sweep
 returns rows that have been processing longer than a fixed timeout back to
 pending. That timeout must exceed maximum processing time, or the reaper
 duplicates work that is still running. It is also why every handler must be

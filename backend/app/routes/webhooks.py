@@ -23,7 +23,7 @@ async def receive_github_webhook(
     """Verify, record, enqueue, return. Nothing that calls GitHub happens here.
 
     Authenticated by HMAC signature rather than a bearer token, which is what
-    makes it one of the three unauthenticated routes (SPEC §8).
+    makes it one of the three unauthenticated routes.
     """
     body = await request.body()
     settings = get_settings()
@@ -50,7 +50,7 @@ async def receive_github_webhook(
     queued = await record_delivery(
         session, delivery_id=delivery_id, event=event, payload=payload
     )
-    # SPEC §9's duplicate-delivery rate has to be counted here: a duplicate is a
+    # The duplicate-delivery rate has to be counted here: a duplicate is a
     # delivery whose insert failed, so the database keeps no record that it arrived.
     recorder = get_recorder()
     recorder.count(DELIVERIES_RECEIVED)

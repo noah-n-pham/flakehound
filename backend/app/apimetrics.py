@@ -1,9 +1,9 @@
-"""The counters only the API process can see (SPEC §9).
+"""The counters only the API process can see.
 
-Two of the numbers SPEC §9 asks for cannot be computed from the database. **API
+Two of the numbers worth reporting cannot be computed from the database. **API
 latency per endpoint** is a property of a request that has already been answered, and
 **the duplicate-delivery rate** has no row to count: a duplicate delivery is one whose
-insert *failed*, which is precisely how dedup works (SPEC §6), so the database's only
+insert *failed*, which is precisely how dedup works, so the database's only
 record of it is the row that was already there.
 
 So the API keeps them in memory for a minute and writes them into the same

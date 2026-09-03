@@ -6,8 +6,8 @@ webhooks. The payloads are still here, though: every queue row keeps the body it
 enqueued with, so the work can be handed back to the same worker and the same
 handlers, and the answer re-derived from the same bytes.
 
-This is not backfill. Backfill (Section D) asks GitHub for history we never saw and
-needs an API client, a rate limiter, and a resumable cursor. This asks nothing of
+This is not backfill. Backfill asks GitHub for history we never saw and needs an API
+client, a rate limiter, and a resumable cursor. This asks nothing of
 anyone: it copies stored payloads back onto the queue at backfill priority, so live
 webhooks keep overtaking them, and relies on idempotency layers 2 and 3 to make the
 re-processing converge rather than duplicate.

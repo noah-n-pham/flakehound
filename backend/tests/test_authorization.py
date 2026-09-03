@@ -1,4 +1,4 @@
-"""The authorized-repo filter (SPEC §8b) — the one security bug that would matter.
+"""The authorized-repo filter — the boundary that matters most in this service.
 
 Two repos exist in every test here, and the caller is authorized for exactly one of
 them. Each test then asks a different way of getting at the other one: list it, read its

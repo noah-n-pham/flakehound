@@ -1,4 +1,4 @@
-"""SPEC §9's counters, the minute they are sampled into, and the endpoint serving them.
+"""The counters, the minute they are sampled into, and the endpoint serving them.
 
 The counters are only worth having if they measure the system rather than themselves,
 so every test here drives real deliveries through the worker or writes real queue and
@@ -101,7 +101,7 @@ async def test_the_product_counters_count_what_was_ingested(db_session):
 
 
 async def test_an_uninstalled_installation_stops_being_counted(db_session):
-    """An uninstall deactivates rather than deletes (D-037), so the counter has to read
+    """An uninstall deactivates rather than deletes, so the counter has to read
     the flags rather than the row count."""
     await deliver(db_session, payloads.installation_event(action="created"))
     assert value(await collect(db_session, now=NOW), "installations") == 1
@@ -140,7 +140,7 @@ async def test_a_dead_lettered_row_shows_up_as_queue_depth_failed(db_session):
 
 
 async def test_ingest_lag_is_measured_from_receipt_to_completion(db_session):
-    """SPEC §9's definition exactly: `received_at` on the delivery, `completed_at` on
+    """Measured end to end: `received_at` on the delivery, `completed_at` on
     the queue row, which is the only pair that spans both processes."""
     await a_delivery(db_session, delivery_id="d1", received_at=NOW - timedelta(minutes=5), lag=2)
     await a_delivery(db_session, delivery_id="d2", received_at=NOW - timedelta(minutes=4), lag=10)
@@ -295,7 +295,7 @@ async def test_the_worker_writes_a_sample(db_session):
 
 
 async def test_the_metrics_endpoint_needs_the_token(client):
-    """SPEC §8: "internal" is a name, not a boundary. The tunnel routes the hostname."""
+    """"internal" is a name, not a boundary. The tunnel routes the whole hostname."""
     response = await client.get("/internal/metrics")
 
     assert response.status_code == 401
