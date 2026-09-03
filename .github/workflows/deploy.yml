@@ -22,7 +22,9 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: 753397111940.dkr.ecr.us-east-1.amazonaws.com/flakehound
+  # The account id is a repository variable, not a literal: it is not a credential,
+  # but this repository is public and publishing it only helps enumeration.
+  ECR_REPOSITORY: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/flakehound
   ECS_CLUSTER: flakehound
   ECS_SERVICE: flakehound
   TASK_FAMILY: flakehound-app
@@ -38,7 +40,11 @@ jobs:
     steps:
       - name: Resolve the commit being deployed
         id: commit
-        run: echo "sha=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_OUTPUT"
+        run: |
+          # Without this the missing variable surfaces as an unparseable role ARN.
+          [ -n "${{ vars.AWS_ACCOUNT_ID }}" ] \
+            || { echo "the AWS_ACCOUNT_ID repository variable is not set" >&2; exit 1; }
+          echo "sha=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         with:
@@ -46,7 +52,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::753397111940:role/flakehound-github-deploy
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/flakehound-github-deploy
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
