@@ -1,7 +1,7 @@
-"""The daily rollup — the aggregate every read endpoint is served from (SPEC §8).
+"""The daily rollup — the aggregate every read endpoint is served from.
 
-One row per (repo, workflow, job name, UTC day), holding the counts SPEC §4 asks
-for: runs, failures, opportunities, flakes, and duration aggregates including p50
+One row per (repo, workflow, job name, UTC day), holding runs, failures,
+opportunities, flakes, and duration aggregates including p50
 and p95. The leaderboard then sums a window of these rows instead of scanning a
 window of job executions.
 
@@ -13,25 +13,26 @@ and would drift the first time a delivery was replayed — which the reaper guar
 will happen.
 
 **And the whole trailing window is recomputed, not just today.** Flake attribution
-reaches backwards in time: SPEC §2's edge-case table has a run re-run 30 days later,
-and the attempt that failed back then only becomes a flake when today's re-run
+reaches backwards in time. A run can be re-run 30 days later, and the attempt that
+failed back then only becomes a flake when today's re-run
 succeeds. Tracking which old days a new event dirtied would mean modelling that
 reach; recomputing the window is one aggregate query over one repo and cannot get it
 wrong. Revisit if a repo's window ever costs enough to measure.
 
 Each count is deliberate, because the leaderboard's numerator and denominator have
-to keep counting the same unit (D-034):
+to keep counting the same unit:
 
 * `runs` — every job execution that finished that day, whatever its conclusion.
   This is the unit minutes attribution and the duration trend are about.
-* `opportunities` — those runs that pass `opportunity_filter()`, SPEC §2's eligible
-  set. The denominator of the flake rate.
+* `opportunities` — those runs that pass `opportunity_filter()`, the eligible set.
+  The denominator of the flake rate.
 * `failures` — opportunities whose outcome is a failure.
-* `flakes` — opportunities a signal named in its evidence. One flake event stands
-  for a whole group, so the job ids in `evidence.job_ids` are what recovers the
-  individual job runs, and a run named by both signals is counted once. Every
-  implicated run is an opportunity by construction, so `flakes <= opportunities`
-  holds for every row and the Wilson interval can never see p > 1.
+* `flakes` — opportunities a signal named in its evidence, via
+  `detection.implicated_job_ids()`. One flake event stands for a whole group, so the
+  job ids in `evidence.job_ids` are what recovers the individual job runs, and a run
+  named by both signals is counted once. Every implicated run is an opportunity by
+  construction, so `flakes <= opportunities` holds for every row and the Wilson
+  interval can never see p > 1.
 """
 
 import argparse
@@ -40,14 +41,12 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import (
-    BigInteger,
     Date,
     Numeric,
     Select,
     and_,
     cast,
     delete,
-    distinct,
     extract,
     func,
     literal,
@@ -58,9 +57,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import get_settings
 from app.db import dispose_engine, get_sessionmaker
-from app.detection import FAILURE, opportunity_filter, outcome_expression
+from app.detection import (
+    FAILURE,
+    flake_filter,
+    implicated_job_ids,
+    opportunity_filter,
+    outcome_expression,
+)
 from app.logging import configure_logging, get_logger
-from app.models import FlakeEvent, Job, JobStatsDaily, Repository
+from app.models import Job, JobStatsDaily, Repository
 
 log = get_logger(__name__)
 
@@ -109,30 +114,15 @@ def duration_expression():
     return extract("epoch", Job.completed_at - Job.started_at)
 
 
-def _implicated_job_ids(repo_id: int) -> Select:
-    """The distinct job runs some signal named, flattened out of the evidence.
-
-    Distinct matters: a re-run recovery records both signals (D-033), so a job id
-    appears in two events, and joining the duplicates onto `jobs` would count that
-    job run twice in `runs` as well as in `flakes`.
-    """
-    expanded = (
-        select(func.jsonb_array_elements_text(FlakeEvent.evidence["job_ids"]).label("job_id"))
-        .where(FlakeEvent.repo_id == repo_id)
-        .subquery()
-    )
-    return select(distinct(cast(expanded.c.job_id, BigInteger)).label("job_id")).subquery()
-
-
 def _aggregate(repo_id: int, since: date) -> Select:
     """One row per (workflow, job name, day) for this repo, computed from raw facts."""
-    implicated = _implicated_job_ids(repo_id)
+    implicated = implicated_job_ids(repo_id)
     day = day_expression()
     duration = duration_expression()
 
     opportunity = opportunity_filter()
     failed = and_(opportunity, outcome_expression() == FAILURE)
-    flaky = and_(opportunity, implicated.c.job_id.is_not(None))
+    flaky = flake_filter(implicated)
 
     return (
         select(
@@ -174,7 +164,7 @@ async def rollup_repository(
 
     Stale rows in the window are deleted rather than left behind, because a row's
     grouping key can move: a job whose `workflow_id` was still unknown is rolled up
-    under NULL, and when the `workflow_run` event supplies the id (D-032) the same
+    under NULL, and when the `workflow_run` event supplies the id the same
     job runs regroup under it. Without the delete, both rows would be summed and the
     leaderboard would show the day twice.
     """

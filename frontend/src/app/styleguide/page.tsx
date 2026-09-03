@@ -13,14 +13,14 @@ import {
   StatBlock,
   Switcher,
   Table,
+  Timeline,
   TwoToneHeading,
 } from "@/components/primitives";
 
 /**
  * The anti-drift route. Every primitive on this page is imported from
  * components/primitives.tsx — the same module the report renders from — so a
- * component cannot exist in two versions. Section F extends this; it does not
- * rebuild it.
+ * component cannot exist in two versions. Extend this page rather than rebuild it.
  */
 export const metadata = { title: "styleguide" };
 
@@ -99,7 +99,7 @@ export default function StyleguidePage() {
 
       <Section label="two-tone heading">
         <TwoToneHeading
-          lead="Flaky jobs,"
+          lead="Flaky CI,"
           trail="found from history you already have."
         />
       </Section>
@@ -201,6 +201,50 @@ export default function StyleguidePage() {
                   <span>2.4–4.5</span>
                 </span>
               ),
+            },
+          ]}
+        />
+      </Section>
+
+      <Section label="timeline">
+        <Body className="mb-8">
+          One job&apos;s history, oldest commit at the left. Each mark is an attempt
+          and each underlined group is a commit, so the third group below — a failure
+          beside a pass under one rule — is a re-run recovery, and the last is two
+          runs disagreeing on the same commit. A pass is deliberately uncoloured: a
+          strip of thirty green squares would say nothing thirty times.
+        </Body>
+        <Timeline
+          commits={[
+            {
+              sha: "a11ce0",
+              state: "passed",
+              marks: [{ outcome: "success" }],
+              title: "a11ce0 · passed",
+            },
+            {
+              sha: "b0bb1e",
+              state: "failed",
+              marks: [{ outcome: "failure" }],
+              title: "b0bb1e · failed",
+            },
+            {
+              sha: "dead42",
+              state: "flaked",
+              marks: [{ outcome: "failure" }, { outcome: "success" }],
+              title: "dead42 · flaked · 2 attempts",
+            },
+            {
+              sha: "cafe11",
+              state: "unjudged",
+              marks: [{ outcome: null }],
+              title: "cafe11 · unjudged · cancelled",
+            },
+            {
+              sha: "fee1ed",
+              state: "flaked",
+              marks: [{ outcome: "success" }, { outcome: "failure" }],
+              title: "fee1ed · flaked · 2 runs",
             },
           ]}
         />

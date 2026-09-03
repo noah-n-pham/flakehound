@@ -50,6 +50,37 @@ export type FlakyRow = {
   wilson_upper: number | null;
 };
 
+/** One attempt on one commit. `outcome` is null when it was not an opportunity. */
+export type HistoryAttempt = {
+  job_id: number;
+  run_id: number;
+  run_attempt: number;
+  workflow_id: number | null;
+  conclusion: string | null;
+  outcome: string | null;
+  implicated: boolean;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_seconds: number | null;
+};
+
+/**
+ * One commit's worth of one job. `state` is derived by the API from the attempts —
+ * `flaked` beats `failed` beats `passed` — and the page draws it rather than
+ * re-deciding it, for the same reason it never recomputes a Wilson bound.
+ */
+export type CommitHistory = {
+  head_sha: string;
+  state: "flaked" | "failed" | "passed" | "unjudged";
+  runs: number;
+  opportunities: number;
+  failures: number;
+  flakes: number;
+  first_started_at: string | null;
+  last_completed_at: string | null;
+  attempts: HistoryAttempt[];
+};
+
 /** The same row on the public board, which spans repos and so must name one. */
 export type PublicFlakyRow = FlakyRow & {
   repo_id: number;
@@ -108,6 +139,34 @@ export function listFlaky(
 ): Promise<FlakyRow[]> {
   return apiGet<FlakyRow[]>(
     `/api/repos/${repoId}/flaky?window_days=${windowDays}&limit=${limit}`,
+    authorizedRepoIds,
+  );
+}
+
+/**
+ * One job's timeline, newest commit first. `limit` counts commits, not attempts.
+ *
+ * The name is a path segment because that is how the API addresses it, and job names
+ * are stored whole — matrix values, spaces, brackets and all — so it is encoded here
+ * rather than trusted to survive as typed. `workflowId` narrows the name to one
+ * workflow, since two workflows can run a job of the same name and they are not the
+ * same job.
+ */
+export function listJobHistory(
+  repoId: number,
+  jobName: string,
+  authorizedRepoIds: number[],
+  workflowId: number | null = null,
+  windowDays = 30,
+  limit = 30,
+): Promise<CommitHistory[]> {
+  const query = new URLSearchParams({
+    window_days: `${windowDays}`,
+    limit: `${limit}`,
+  });
+  if (workflowId !== null) query.set("workflow_id", `${workflowId}`);
+  return apiGet<CommitHistory[]>(
+    `/api/repos/${repoId}/jobs/${encodeURIComponent(jobName)}/history?${query}`,
     authorizedRepoIds,
   );
 }

@@ -110,8 +110,8 @@ export function Page({
 }
 
 /**
- * The dot-separated mono line from the bottom of `docs/design-refs/02-report.png`:
- * facts about how a number was produced, small and faint enough to ignore.
+ * The dot-separated mono line that sits under a statistic: facts about how a number
+ * was produced, small and faint enough to ignore.
  */
 export function MetaStrip({ items }: { items: ReactNode[] }) {
   return (
@@ -255,6 +255,85 @@ export function IntervalBar({
         />
       )}
     </span>
+  );
+}
+
+export type TimelineMark = { outcome: string | null };
+
+export type TimelineCommit = {
+  sha: string;
+  /** What the commit's attempts add up to, decided by the API, not here. */
+  state: "flaked" | "failed" | "passed" | "unjudged";
+  /** One mark per attempt, in order. A commit is a bracket around its attempts. */
+  marks: TimelineMark[];
+  /** Hover text: the sha and its counts, since the strip itself has no room. */
+  title: string;
+};
+
+const MARK = "inline-block h-5 w-[9px] align-middle";
+
+function markClass(outcome: string | null): string {
+  // A pass is not news, so it is not coloured. Only a failure and an unjudged run
+  // get anything, which keeps a 30-commit strip monochrome until something is wrong.
+  if (outcome === "failure") return `${MARK} bg-bad`;
+  if (outcome === "success") return `${MARK} bg-text-faint`;
+  return `${MARK} border border-border`;
+}
+
+/**
+ * One job's pass/fail history by commit, oldest at the left.
+ *
+ * Each mark is one attempt and each group is one commit, underlined so the group
+ * reads as a bracket: a failure beside a pass under one rule is a flake, which is
+ * the whole shape both signals look for. The commit's own verdict comes from the
+ * API — `flaked` beats `failed` beats `passed` — and is drawn on that rule, so the
+ * timeline never re-decides what the leaderboard already ranked.
+ *
+ * Attempts rather than commits are the marks because a re-run recovery lives
+ * *inside* one commit. Collapsing it to a single mark would hide the evidence for
+ * the signal that found it.
+ */
+export function Timeline({ commits }: { commits: TimelineCommit[] }) {
+  return (
+    <div>
+      <div className="overflow-x-auto pb-2">
+        <div className="flex items-end gap-[10px]">
+          {commits.map((commit) => (
+            <span
+              key={commit.sha}
+              title={commit.title}
+              className={clsx(
+                "inline-flex gap-[2px] border-b pb-1",
+                commit.state === "flaked" ? "border-warn" : "border-border",
+              )}
+            >
+              {commit.marks.map((mark, index) => (
+                <span key={index} className={markClass(mark.outcome)} />
+              ))}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-[11px] text-text-faint">
+        <span className="inline-flex items-center gap-2">
+          <span className={markClass("success")} />
+          passed
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className={markClass("failure")} />
+          failed
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className={markClass(null)} />
+          not judgeable
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block h-5 w-[9px] border-b border-warn align-middle" />
+          commit flaked
+        </span>
+        <span>one mark per attempt · one group per commit · oldest first</span>
+      </div>
+    </div>
   );
 }
 

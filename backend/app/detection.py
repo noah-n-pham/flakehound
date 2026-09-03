@@ -1,4 +1,4 @@
-"""Flake detection — SPEC §2, which is binding.
+"""Flake detection: the two signals that turn Actions history into evidence.
 
 Signal A (re-run recovery) compares one job's conclusions across the attempts of a
 single run. GitHub's re-run creates a new attempt under the same run id and the
@@ -23,7 +23,18 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, case, func, not_, select
+from sqlalchemy import (
+    BigInteger,
+    ColumnElement,
+    Select,
+    and_,
+    case,
+    cast,
+    distinct,
+    func,
+    not_,
+    select,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,7 +53,7 @@ FAILURE = "failure"
 
 @dataclass(frozen=True)
 class Opportunity:
-    """A terminal job run eligible for evaluation (SPEC §2 definitions)."""
+    """A terminal job run eligible for evaluation."""
 
     job_id: int
     run_id: int
@@ -54,9 +65,9 @@ class Opportunity:
 
 
 def opportunity_filter() -> ColumnElement[bool]:
-    """SPEC §2's *opportunity*, as SQL over the jobs table.
+    """An *opportunity*, as SQL over the jobs table.
 
-    Every clause is a row of that section's edge-case table:
+    Every clause below is an edge case this filter has to get right:
 
     * `cancelled`, `skipped`, `null` (still running), and the advisory conclusions
       are simply not in the eligible set — a non-terminal job is re-evaluated when
@@ -97,6 +108,37 @@ def outcome_expression() -> ColumnElement[str]:
     else" is a real failure rather than a cancellation.
     """
     return case((Job.conclusion == SUCCESS, SUCCESS), else_=FAILURE)
+
+
+def implicated_job_ids(repo_id: int) -> Select:
+    """The distinct job runs some signal named, flattened out of the evidence.
+
+    One flake event stands for a whole group, so `evidence.job_ids` is the only way
+    back from an event to the individual job runs it implicated. Two consumers need
+    that mapping — the rollup counts its `flakes` through it and the job history marks
+    its timeline with it — which is why it lives beside the signals that write it
+    rather than inside either reader.
+
+    Distinct matters: a re-run recovery records both signals, so one job id appears in
+    two events, and joining the duplicates onto `jobs` would count that job run twice.
+    """
+    expanded = (
+        select(func.jsonb_array_elements_text(FlakeEvent.evidence["job_ids"]).label("job_id"))
+        .where(FlakeEvent.repo_id == repo_id)
+        .subquery()
+    )
+    return select(distinct(cast(expanded.c.job_id, BigInteger)).label("job_id")).subquery()
+
+
+def flake_filter(implicated: Select) -> ColumnElement[bool]:
+    """A job row that a signal implicated *and* that was eligible to be judged.
+
+    The eligibility half is not redundant even though every implicated run is an
+    opportunity by construction: it keeps `flakes <= opportunities` a property of the
+    query rather than a property of the data, so the Wilson interval can never be
+    handed p > 1 by a stale event.
+    """
+    return and_(opportunity_filter(), implicated.c.job_id.is_not(None))
 
 
 async def _opportunities(
@@ -165,7 +207,7 @@ async def evaluate_rerun_recovery(
     SPEC states the rule as attempt N failing and attempt N+1 succeeding. It is
     implemented over *adjacent opportunities* rather than adjacent attempt
     numbers, which is the same thing whenever every attempt contains the job, and
-    is the only reading that survives the cases the spec says to handle:
+    is the only reading that survives every case that has to be handled:
     `rerun-failed-jobs` produces an attempt containing only the jobs that failed,
     so a job can be missing from the attempt in between, and a cancelled attempt
     is not an opportunity at all. Neither should be able to hide a recovery.
@@ -227,9 +269,9 @@ async def evaluate_same_commit_disagreement(
     """Signal B: this job both passed and failed on one commit, in one workflow.
 
     A job whose workflow is still unknown is skipped rather than grouped, because
-    SPEC §2 forbids grouping by `(job_name, head_sha)` alone — two workflows can run
+    Grouping by `(job_name, head_sha)` alone is wrong — two workflows can run
     a job of the same name on the same commit and they are different jobs. Such a
-    job is re-evaluated when its `workflow_run` event supplies the id (D-032).
+    job is re-evaluated when its `workflow_run` event supplies the id.
     """
     if workflow_id is None:
         return False
@@ -292,7 +334,7 @@ async def record_flake_event(
     head_sha: str | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Idempotency layer 3: unique on the grouping key plus the signal (SPEC §6).
+    """Idempotency layer 3: unique on the grouping key plus the signal.
 
     Signal A groups by run, so it leaves the columns Signal B groups on NULL. That
     is only a unique key because the constraint is declared NULLS NOT DISTINCT.

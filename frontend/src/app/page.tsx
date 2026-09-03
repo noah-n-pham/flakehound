@@ -3,23 +3,29 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import {
   Body,
+  Heading,
   InlineLink,
   IntervalBar,
   LabelValueRow,
+  MetaStrip,
   Page,
   Section,
   SectionLabel,
   StatBlock,
   Switcher,
   Table,
+  Timeline,
   toneClass,
   TwoToneHeading,
+  type TimelineCommit,
   type Tone,
 } from "@/components/primitives";
 import {
   listFlaky,
+  listJobHistory,
   listJobs,
   listRepos,
+  type CommitHistory,
   type FlakyRow,
   type JobRow,
   type RepoSummary,
@@ -39,6 +45,8 @@ export const dynamic = "force-dynamic";
 
 const WINDOW_DAYS = 30;
 const LIMIT = 50;
+/** Commits on the timeline, not attempts — a heavily re-run commit is one group. */
+const COMMITS = 40;
 
 function conclusionTone(conclusion: string | null): Tone {
   switch (conclusion) {
@@ -103,18 +111,62 @@ function boardRows(board: FlakyRow[]) {
   }));
 }
 
+function stateTone(state: CommitHistory["state"]): Tone {
+  switch (state) {
+    case "flaked":
+      return "warn";
+    case "failed":
+      return "bad";
+    case "passed":
+      return "ok";
+    default:
+      return "muted";
+  }
+}
+
 /**
- * Signed out. Until Section E this page served a private repository's CI metadata to
- * anyone with the URL — accepted deliberately while auth was being built (H-004b),
- * and closed there.
+ * The API returns the newest commit first, because a caller asking for ten wants the
+ * ten most recent. A timeline reads left to right in time, so it is reversed here —
+ * once, at the boundary, rather than by having the API answer in an order that would
+ * make `limit` mean the ten oldest.
  */
+function timelineCommits(history: CommitHistory[]): TimelineCommit[] {
+  return [...history].reverse().map((commit) => ({
+    sha: commit.head_sha,
+    state: commit.state,
+    marks: commit.attempts.map((attempt) => ({ outcome: attempt.outcome })),
+    title: [
+      commit.head_sha.slice(0, 7),
+      commit.state,
+      `${commit.attempts.length} ${commit.attempts.length === 1 ? "attempt" : "attempts"}`,
+      `${commit.runs} ${commit.runs === 1 ? "run" : "runs"}`,
+      formatUtcCompact(commit.last_completed_at),
+    ].join(" · "),
+  }));
+}
+
+function commitRows(history: CommitHistory[]) {
+  return history.map((commit) => ({
+    sha: commit.head_sha.slice(0, 7),
+    state: (
+      <span className={toneClass(stateTone(commit.state))}>{commit.state}</span>
+    ),
+    attempts: `${commit.attempts.length}`,
+    runs: `${commit.runs}`,
+    opportunities: `${commit.opportunities}`,
+    flakes: `${commit.flakes}`,
+    last: formatUtcCompact(commit.last_completed_at),
+  }));
+}
+
+/** Signed out. No repository data is fetched on this path at all. */
 function SignedOut() {
   return (
     <Page>
       <SectionLabel>report</SectionLabel>
       <TwoToneHeading
         className="mt-4"
-        lead="Flaky jobs,"
+        lead="Flaky CI,"
         trail="found from history you already have."
       />
       <Body className="mt-8">
@@ -146,7 +198,7 @@ function NothingInstalled() {
 export default async function ReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ repo?: string }>;
+  searchParams: Promise<{ repo?: string; job?: string }>;
 }) {
   const session = await auth();
   const repoIds = session?.user ? await authorizedRepoIds() : null;
@@ -155,8 +207,8 @@ export default async function ReportPage({
   }
 
   const repos = await listRepos(repoIds);
-  const requested = (await searchParams).repo;
-  const repo = pick(repos, requested);
+  const requested = await searchParams;
+  const repo = pick(repos, requested.repo);
 
   if (!repo) {
     return (
@@ -171,6 +223,20 @@ export default async function ReportPage({
     listFlaky(repo.id, repoIds, WINDOW_DAYS, LIMIT),
     listJobs(repo.id, repoIds, LIMIT),
   ]);
+
+  // The timeline is about one job, and which job is only knowable once the board
+  // has answered — the default is the one ranked worst.
+  const tracked = pickJob(board, requested.job);
+  const history = tracked
+    ? await listJobHistory(
+        repo.id,
+        tracked.job_name,
+        repoIds,
+        tracked.workflow_id,
+        WINDOW_DAYS,
+        COMMITS,
+      )
+    : [];
 
   const flakes = board.reduce((total, row) => total + row.flakes, 0);
   const opportunities = board.reduce((total, row) => total + row.opportunities, 0);
@@ -191,7 +257,8 @@ export default async function ReportPage({
           <Switcher
             items={repos.map((item) => ({
               label: item.full_name,
-              href: item.id === repos[0].id ? "/" : `/?repo=${item.id}`,
+              // Deliberately drops `?job=`: a job name belongs to the repo it ran in.
+              href: reportHref(item, repos),
               current: item.id === repo.id,
             }))}
           />
@@ -242,6 +309,59 @@ export default async function ReportPage({
           </Body>
         </Section>
       )}
+
+      {tracked ? (
+        <Section label="history by commit">
+          <Switcher
+            items={board.map((row) => ({
+              label: row.job_name,
+              href: reportHref(repo, repos, row.job_name),
+              current: row.job_name === tracked.job_name,
+            }))}
+          />
+          <Heading level={3} className="mt-8">
+            {tracked.job_name}
+          </Heading>
+          {history.length > 0 ? (
+            <>
+              <div className="mt-8">
+                <Timeline commits={timelineCommits(history)} />
+              </div>
+              <div className="mt-8">
+                <MetaStrip
+                  items={[
+                    `${history.length} ${history.length === 1 ? "commit" : "commits"}`,
+                    `${history.filter((commit) => commit.state === "flaked").length} flaked`,
+                    `${history.filter((commit) => commit.state === "failed").length} failed outright`,
+                    `${history.reduce((total, commit) => total + commit.attempts.length, 0)} attempts`,
+                  ]}
+                />
+              </div>
+              <div className="mt-8">
+                <Table
+                  columns={[
+                    { key: "sha", header: "commit" },
+                    { key: "state", header: "state" },
+                    { key: "attempts", header: "att", numeric: true },
+                    { key: "runs", header: "runs", numeric: true },
+                    { key: "opportunities", header: "opps", numeric: true },
+                    { key: "flakes", header: "flakes", numeric: true },
+                    { key: "last", header: "last finished · utc", numeric: true },
+                  ]}
+                  rows={commitRows(history)}
+                />
+              </div>
+            </>
+          ) : (
+            <Body className="mt-8 max-w-[680px]">
+              Nothing in the last {WINDOW_DAYS} days. The leaderboard reads a rollup
+              of whole UTC days and this reads the job rows themselves, so a job
+              whose only runs are older than the window can rank above and be empty
+              here.
+            </Body>
+          )}
+        </Section>
+      ) : null}
 
       <Section label="repository">
         <LabelValueRow label="full name" value={repo.full_name} />
@@ -304,7 +424,7 @@ function Header() {
       <SectionLabel>report</SectionLabel>
       <TwoToneHeading
         className="mt-4"
-        lead="Flaky jobs,"
+        lead="Flaky CI,"
         trail="found from history you already have."
       />
     </>
@@ -324,4 +444,27 @@ function pick(repos: RepoSummary[], requested: string | undefined): RepoSummary 
   const match = repos.find((repo) => `${repo.id}` === requested);
   if (!match) notFound();
   return match;
+}
+
+/**
+ * Which job the timeline is about. Checked against the board the API already
+ * returned for a repo the caller is authorized on, for the same reason `?repo=` is
+ * checked against the repo list: a query-string value is never passed into a read on
+ * its own. A name that is not on the board is a 404 rather than an empty timeline,
+ * so the query string cannot be used to ask whether a job exists.
+ */
+function pickJob(board: FlakyRow[], requested: string | undefined): FlakyRow | undefined {
+  if (requested === undefined) return board[0];
+  const match = board.find((row) => row.job_name === requested);
+  if (!match) notFound();
+  return match;
+}
+
+/** The canonical URL for one view of the report. Defaults stay out of the query. */
+function reportHref(repo: RepoSummary, repos: RepoSummary[], jobName?: string): string {
+  const query = new URLSearchParams();
+  if (repo.id !== repos[0].id) query.set("repo", `${repo.id}`);
+  if (jobName !== undefined) query.set("job", jobName);
+  const search = query.toString();
+  return search ? `/?${search}` : "/";
 }
