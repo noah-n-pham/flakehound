@@ -125,9 +125,12 @@ async def test_search_stops_once_it_has_enough(app_credentials, token_route):
         )
     )
 
-    found = await search_band(BANDS[0], installation_id=INSTALLATION_ID, wanted=5, now=NOW)
+    found, skipped = await search_band(
+        BANDS[0], installation_id=INSTALLATION_ID, wanted=5, now=NOW
+    )
 
     assert len(found) == 5
+    assert skipped == 0
     assert route.call_count == 1
 
 
@@ -138,7 +141,10 @@ async def test_search_stops_on_an_empty_page_rather_than_paging_forever(
         return_value=httpx.Response(200, json={"items": []}, headers=headers())
     )
 
-    assert await search_band(BANDS[0], installation_id=INSTALLATION_ID, wanted=30, now=NOW) == []
+    found, skipped = await search_band(
+        BANDS[0], installation_id=INSTALLATION_ID, wanted=30, now=NOW
+    )
+    assert (found, skipped) == ([], 0)
     assert route.call_count == 1
 
 
@@ -215,13 +221,17 @@ async def test_discovery_is_idempotent(app_credentials, token_route, db_session)
     stub_search(token_route, "astral-sh/uv")
     stub_candidate(token_route, "astral-sh/uv", 699_532_645)
 
-    for _ in range(3):
-        await discover(
-            db_session, installation_id=INSTALLATION_ID, bands=ONE_BAND, per_band=1, now=NOW
-        )
+    first = await discover(
+        db_session, installation_id=INSTALLATION_ID, bands=ONE_BAND, per_band=1, now=NOW
+    )
+    later = await discover(
+        db_session, installation_id=INSTALLATION_ID, bands=ONE_BAND, per_band=1, now=NOW
+    )
 
     stored = await db_session.get(Repository, 699_532_645)
     assert (stored.source, stored.installation_id) == ("observed", None)
+    assert first.screened == 1 and first.skipped == 0
+    assert later.screened == 0 and later.skipped == 1
 
 
 async def test_the_rejection_counts_are_the_audit_trail(
@@ -239,9 +249,129 @@ async def test_the_rejection_counts_are_the_audit_trail(
     )
 
     assert result.screened == 3
+    assert result.skipped == 0
     assert result.admitted == ["a/good"]
     assert result.rejections == {"archived": 1, "too_little_history": 1}
     assert result.bands[0].requests_spent == 9
+
+
+# --------------------------------------------------------------------------- #
+# Already-stored repositories are not re-screened
+# --------------------------------------------------------------------------- #
+
+
+async def _store_observed(session, repo_id: int, full_name: str) -> None:
+    await upsert_repository(
+        session,
+        installation_id=None,
+        source="observed",
+        repository={"id": repo_id, "full_name": full_name, "private": False},
+    )
+    await session.flush()
+
+
+async def test_a_stored_repo_is_skipped_and_does_not_spend_screening_requests(
+    app_credentials, token_route, db_session
+):
+    """The budget this exists to save: three core requests we already spent."""
+    await _store_observed(db_session, 10, "old/one")
+    stub_search(token_route, "old/one", "new/two")
+    stub_candidate(token_route, "new/two", 20)
+
+    result = await discover(
+        db_session, installation_id=INSTALLATION_ID, bands=ONE_BAND, per_band=1, now=NOW
+    )
+
+    assert result.skipped == 1
+    assert result.screened == 1
+    assert result.admitted == ["new/two"]
+    assert await db_session.get(Repository, 10) is not None
+    # respx is assert_all_mocked: a screen of old/one would have no route and fail.
+
+
+async def test_an_installed_repo_is_skipped_the_same_way(
+    app_credentials, token_route, db_session
+):
+    from app.models import Installation
+
+    db_session.add(Installation(id=INSTALLATION_ID, account_login="khoi"))
+    await db_session.flush()
+    await upsert_repository(
+        db_session,
+        installation_id=INSTALLATION_ID,
+        repository={"id": 43, "full_name": "khoi/thing", "private": False},
+    )
+    await db_session.flush()
+    stub_search(token_route, "khoi/thing", "new/two")
+    stub_candidate(token_route, "new/two", 20)
+
+    result = await discover(
+        db_session, installation_id=INSTALLATION_ID, bands=ONE_BAND, per_band=1, now=NOW
+    )
+
+    assert result.skipped == 1
+    assert result.admitted == ["new/two"]
+    stored = await db_session.get(Repository, 43)
+    assert (stored.source, stored.installation_id) == ("installed", INSTALLATION_ID)
+
+
+async def test_skip_is_by_github_id_even_when_the_full_name_changed(
+    app_credentials, token_route, db_session
+):
+    await _store_observed(db_session, 10, "old/name")
+    token_route.get(SEARCH_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {"id": 10, "full_name": "renamed/name"},
+                    {"id": 20, "full_name": "new/two"},
+                ]
+            },
+            headers=headers(),
+        )
+    )
+    stub_candidate(token_route, "new/two", 20)
+
+    result = await discover(
+        db_session, installation_id=INSTALLATION_ID, bands=ONE_BAND, per_band=1, now=NOW
+    )
+
+    assert result.skipped == 1
+    assert result.admitted == ["new/two"]
+
+
+async def test_search_pages_past_stored_hits_to_fill_the_quota(
+    app_credentials, token_route, db_session
+):
+    await _store_observed(db_session, 1, "old/one")
+
+    def _by_page(request):
+        page = request.url.params.get("page", "1")
+        # A full page of already-stored hits: short pages mean "no more", so
+        # paging past the pool only happens when search still has more.
+        items = (
+            [{"id": 1, "full_name": "old/one"}] * 100
+            if page == "1"
+            else [{"id": 2, "full_name": "new/two"}]
+        )
+        return httpx.Response(200, json={"items": items}, headers=headers())
+
+    token_route.get(SEARCH_URL).mock(side_effect=_by_page)
+    stub_candidate(token_route, "new/two", 2)
+
+    result = await discover(
+        db_session, installation_id=INSTALLATION_ID, bands=ONE_BAND, per_band=1, now=NOW
+    )
+
+    assert result.skipped == 100
+    assert result.admitted == ["new/two"]
+    search_pages = [
+        call.request.url.params.get("page")
+        for call in token_route.calls
+        if str(call.request.url).startswith(SEARCH_URL)
+    ]
+    assert search_pages == ["1", "2"]
 
 
 # --------------------------------------------------------------------------- #

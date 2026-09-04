@@ -28,10 +28,12 @@ already an eligibility criterion rather than a hidden one.
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.github import api_request
 from app.logging import get_logger
+from app.models import Repository
 from app.observe import (
     PUSHED_WITHIN_DAYS,
     REQUESTS_PER_CANDIDATE,
@@ -73,6 +75,8 @@ BANDS = (
 # 3 × 30 × 3 = 270 core requests for a full pass.
 CANDIDATES_PER_BAND = 30
 SEARCH_PAGE_SIZE = 100
+# Search caps any query at 1,000 reachable results; 100 per page is ten pages.
+SEARCH_MAX_PAGES = 10
 # Search's own budget, which is nothing like core's.
 SEARCH_LIMIT_PER_MINUTE = 30
 SEARCH_WINDOW_SECONDS = 60.0
@@ -125,25 +129,67 @@ def band_query(band: Band, *, now: datetime) -> str:
     )
 
 
+def _hit_is_stored(item: dict, ids: set[int], names: set[str]) -> bool:
+    """Skip by GitHub repo id when search sent one, otherwise by full_name.
+
+    Identity is the id (Checkpoint 1). full_name is the fallback for a stub that
+    only carried a name, and for a rename that has not yet been written back.
+    """
+    raw_id = item.get("id")
+    if raw_id is not None and int(raw_id) in ids:
+        return True
+    name = item.get("full_name")
+    return bool(name) and name in names
+
+
+async def stored_repo_keys(session: AsyncSession) -> tuple[set[int], set[str]]:
+    """Every repository already on disk, installed or observed.
+
+    Screening one of these again spends three core requests to learn a verdict
+    we already acted on. A later pass has to page *past* them, not re-spend.
+    """
+    ids: set[int] = set()
+    names: set[str] = set()
+    for repo_id, full_name in await session.execute(
+        select(Repository.id, Repository.full_name)
+    ):
+        ids.add(int(repo_id))
+        names.add(full_name)
+    return ids, names
+
+
 async def search_band(
     band: Band,
     *,
     installation_id: int,
     wanted: int,
     now: datetime | None = None,
-) -> list[str]:
-    """Full names from one band, most recently pushed first, capped at `wanted`.
+    skip_ids: set[int] | None = None,
+    skip_names: set[str] | None = None,
+) -> tuple[list[str], int]:
+    """Unknown full names from one band, most recently pushed first, capped at `wanted`.
 
-    Stops as soon as it has enough. Search caps any query at 1,000 reachable results
-    however you page it, which is far more than a conservative pass asks for, so no
-    windowing is needed here the way it is for the runs listing.
+    Already-stored hits are skipped and paging continues until `wanted` unknown
+    names are collected or search is exhausted. That is what lets a larger pass
+    fill a quota without re-screening the pool we already have. Search caps any
+    query at 1,000 reachable results, so no windowing is needed here the way it
+    is for the runs listing.
     """
     now = now or datetime.now(UTC)
+    skip_ids = skip_ids or set()
+    skip_names = skip_names or set()
     query = band_query(band, now=now)
     found: list[str] = []
+    skipped = 0
     page = 1
+    # When we expect to skip, take full pages so one stored hit does not waste
+    # a request that only asked for `wanted` names.
+    page_size = SEARCH_PAGE_SIZE if (skip_ids or skip_names) else min(SEARCH_PAGE_SIZE, wanted)
 
-    while len(found) < wanted:
+    while len(found) < wanted and page <= SEARCH_MAX_PAGES:
+        requested = (
+            page_size if (skip_ids or skip_names) else min(page_size, wanted - len(found))
+        )
         response = await api_request(
             installation_id,
             "GET",
@@ -152,7 +198,7 @@ async def search_band(
                 "q": query,
                 "sort": "updated",
                 "order": "desc",
-                "per_page": min(SEARCH_PAGE_SIZE, wanted - len(found)),
+                "per_page": requested,
                 "page": page,
             },
             limiter=get_search_limiter(),
@@ -161,17 +207,26 @@ async def search_band(
         items = response.json().get("items") or []
         if not items:
             break
-        found.extend(item["full_name"] for item in items)
+        for item in items:
+            if _hit_is_stored(item, skip_ids, skip_names):
+                skipped += 1
+                continue
+            found.append(item["full_name"])
+            if len(found) >= wanted:
+                break
         page += 1
+        if len(items) < requested:
+            break
 
     log.info(
         "discover.searched",
         band=band.name,
         query=query,
         candidates=len(found[:wanted]),
+        skipped=skipped,
         pages=page - 1,
     )
-    return found[:wanted]
+    return found[:wanted], skipped
 
 
 @dataclass
@@ -180,6 +235,7 @@ class BandResult:
 
     band: str
     screened: int = 0
+    skipped: int = 0
     admitted: list[str] = field(default_factory=list)
     rejected: dict[str, int] = field(default_factory=dict)
 
@@ -199,6 +255,10 @@ class DiscoveryResult:
     @property
     def screened(self) -> int:
         return sum(band.screened for band in self.bands)
+
+    @property
+    def skipped(self) -> int:
+        return sum(band.skipped for band in self.bands)
 
     @property
     def rejections(self) -> dict[str, int]:
@@ -240,21 +300,32 @@ async def discover(
     per_band: int = CANDIDATES_PER_BAND,
     now: datetime | None = None,
 ) -> DiscoveryResult:
-    """Search each band, screen every candidate, persist the admitted ones.
+    """Search each band, screen unknown candidates, persist the admitted ones.
 
-    Screening is what decides; search only proposes. The rejection counts are returned
-    rather than discarded, because "we looked at ninety and admitted eleven" is the
-    honest answer to how the board's repositories were chosen, and a criterion that
-    never rejects anything is one worth deleting.
+    Already-stored repositories are skipped before the three screening requests,
+    and search pages past them so `per_band` is a quota of *new* candidates.
+    Screening is what decides; search only proposes. The rejection counts are
+    returned rather than discarded, because "we looked at ninety and admitted
+    eleven" is the honest answer to how the board's repositories were chosen.
+    Each band is committed as it finishes so a crash mid-pass keeps the bands
+    that already landed.
     """
     now = now or datetime.now(UTC)
+    skip_ids, skip_names = await stored_repo_keys(session)
     result = DiscoveryResult()
 
     for band in bands:
         band_result = BandResult(band=band.name)
-        for full_name in await search_band(
-            band, installation_id=installation_id, wanted=per_band, now=now
-        ):
+        names, skipped = await search_band(
+            band,
+            installation_id=installation_id,
+            wanted=per_band,
+            now=now,
+            skip_ids=skip_ids,
+            skip_names=skip_names,
+        )
+        band_result.skipped = skipped
+        for full_name in names:
             facts, verdict = await screen(
                 full_name, installation_id=installation_id, now=now
             )
@@ -262,13 +333,17 @@ async def discover(
             if verdict.eligible and facts is not None:
                 await _record(session, facts)
                 band_result.admitted.append(facts.full_name)
+                skip_ids.add(facts.repo_id)
+                skip_names.add(facts.full_name)
             else:
                 _count(band_result, verdict)
         result.bands.append(band_result)
+        await session.commit()
         log.info(
             "discover.band_complete",
             band=band.name,
             screened=band_result.screened,
+            skipped=band_result.skipped,
             admitted=len(band_result.admitted),
             rejected=band_result.rejected,
             requests_spent=band_result.requests_spent,
@@ -277,6 +352,7 @@ async def discover(
     log.info(
         "discover.complete",
         screened=result.screened,
+        skipped=result.skipped,
         admitted=len(result.admitted),
         rejections=result.rejections,
     )
@@ -290,8 +366,17 @@ async def _main(per_band: int) -> None:
     installation_id = observation_installation_id()
     async with get_sessionmaker()() as session:
         result = await discover(session, installation_id=installation_id, per_band=per_band)
-        await session.commit()
-    log.info("discover.committed", admitted=result.admitted)
+        observed = await session.scalar(
+            select(func.count()).select_from(Repository).where(Repository.source == "observed")
+        )
+    log.info(
+        "discover.committed",
+        admitted=result.admitted,
+        screened=result.screened,
+        skipped=result.skipped,
+        rejections=result.rejections,
+        observed_total=int(observed or 0),
+    )
     await dispose_engine()
 
 
