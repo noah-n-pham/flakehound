@@ -32,4 +32,11 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
 USER appuser
 EXPOSE 8000
 
+# The commit this image was built from, read back out over `/healthz` so that a
+# pull-based deploy can tell which bytes are serving. Deliberately the last layer:
+# it changes on every single build, and anything above it would be a cache miss on
+# an arm64 build that is already emulated and slow.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
+
 CMD ["docker-entrypoint.sh"]

@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     app_env: Literal["local", "test", "production"] = "local"
     log_level: str = "info"
 
+    # The commit this image was built from, stamped in by the Dockerfile's build
+    # arg. Deployment is pull-based: CI pushes a tag and walks away, so the only
+    # way it can know its image is the one now serving is to ask the running
+    # process what it is. `unknown` is what a local or hand-built image reports.
+    git_sha: str = "unknown"
+
     database_url: str = "postgresql+psycopg://ci:ci@localhost:5433/flakehound"
 
     # RDS generated the master password and holds it in a secret it owns,

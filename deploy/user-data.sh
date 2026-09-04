@@ -209,6 +209,80 @@ exec /usr/bin/docker run --rm --name flakehound \
 SCRIPT
 
 # ---------------------------------------------------------------------------
+# flakehound-poll — the deploy.
+#
+# CI has no way to reach this box: the IAM user is denied every SSM action and
+# the security group has no inbound rule, so there is nothing to push *to*
+# (D-053). Deployment is therefore the box's own job. CI builds an image, moves
+# the `latest` tag, and stops; a minute later this notices the tag points at a
+# digest that is not the one running, and restarts the unit onto it.
+#
+# It compares digests rather than tags because the tag never changes — that is
+# the whole point of a tag — and the digest is what `flakehound-image` already
+# recorded for the container that is running right now.
+#
+# Restarting is all it does. It does not pull, does not resolve a second time,
+# and does not write the runtime file: `flakehound-image` does all three on the
+# way back up, so there is exactly one place that decides which bytes run.
+# ---------------------------------------------------------------------------
+install -m 0755 /dev/stdin /usr/local/bin/flakehound-poll <<'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+
+REGION=us-east-1
+RUN_DIR=/run/flakehound
+
+latest=$(aws ecr describe-images --region "$REGION" --repository-name flakehound \
+  --image-ids imageTag=latest --query 'imageDetails[0].imageDigest' --output text)
+
+# A throttled or half-broken describe prints `None`, an error, or nothing at all.
+# Treating any of those as "the digest moved" would restart the service on a bad
+# API call, so anything that is not a digest ends the run without acting.
+if [[ "$latest" != sha256:* ]]; then
+  echo "flakehound-poll: :latest did not resolve to a digest (got '${latest}')"
+  exit 0
+fi
+
+running=none
+if [[ -r "${RUN_DIR}/runtime" ]]; then
+  running=$(sed -n 's/^IMAGE=.*@//p' "${RUN_DIR}/runtime")
+fi
+
+if [[ "$latest" == "$running" ]]; then
+  exit 0
+fi
+
+echo "flakehound-poll: :latest moved ${running} -> ${latest}, restarting flakehound"
+systemctl restart flakehound
+SCRIPT
+
+install -m 0644 /dev/stdin /etc/systemd/system/flakehound-poll.service <<'UNIT'
+[Unit]
+Description=flakehound: adopt a new image if the latest tag has moved
+After=flakehound.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/flakehound-poll
+UNIT
+
+install -m 0644 /dev/stdin /etc/systemd/system/flakehound-poll.timer <<'UNIT'
+[Unit]
+Description=flakehound: check for a new image every minute
+
+[Timer]
+# A minute is the latency a deploy pays after CI finishes. It is dwarfed by the
+# six-minute emulated arm64 build, so polling faster would buy nothing that is
+# noticeable; polling slower would make the deploy's own wait look like a hang.
+OnBootSec=90s
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+# ---------------------------------------------------------------------------
 # The unit. This is what ECS used to do, and all that is left of what it did.
 #
 # `Restart=always` is the entire supervision requirement: D-013 has the
@@ -296,6 +370,11 @@ docker run --rm \
 systemctl daemon-reload
 systemctl enable --now flakehound
 
+# Started after the service, not with it: the timer's first tick must find a
+# runtime file to compare against, or it would read `none`, decide the digest
+# moved, and restart a container that is still starting.
+systemctl enable --now flakehound-poll.timer
+
 # Boot is not finished until the container answers for itself. A unit that
 # started is not a service that works, and this is the last moment anything can
 # be observed from inside the box.
@@ -314,3 +393,5 @@ if [[ "$code" != "200" ]]; then
 fi
 
 echo "flakehound bootstrap complete on ${INSTANCE_ID}: healthz=${code} image=${IMAGE}"
+echo "flakehound serving: $(curl -s http://127.0.0.1:8000/healthz)"
+systemctl list-timers flakehound-poll.timer --no-pager || true

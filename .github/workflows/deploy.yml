@@ -10,9 +10,10 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # The service runs one task and migrates at container start, so two deploys must
-  # never overlap. Queue them rather than cancel: a cancelled deploy would leave
-  # the service on a revision nobody chose.
+  # One instance runs one container and migrates at container start, so two
+  # deploys must never overlap. Queue them rather than cancel: two jobs racing to
+  # move `latest` would leave the box adopting whichever push won, which is not
+  # necessarily the newer commit.
   group: deploy-production
   cancel-in-progress: false
 
@@ -25,11 +26,14 @@ env:
   # The account id is a repository variable, not a literal: it is not a credential,
   # but this repository is public and publishing it only helps enumeration.
   ECR_REPOSITORY: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/flakehound
-  ECS_CLUSTER: flakehound
-  ECS_SERVICE: flakehound
-  TASK_FAMILY: flakehound-app
 
 jobs:
+  # This workflow pushes an image and then waits. It does not deploy anything, and
+  # it holds no credential that could: the instance is unreachable from here —
+  # no inbound rule, and the deploy user is denied every SSM action — so the box
+  # polls ECR itself and restarts onto a digest it has not seen (D-053). What CI
+  # can still do is refuse to go green until the commit it built is the one
+  # answering in production, which is what the last step is for.
   deploy:
     name: build and deploy
     runs-on: ubuntu-latest
@@ -57,15 +61,20 @@ jobs:
 
       - uses: aws-actions/amazon-ecr-login@v2
 
-      # The task definition declares ARM64 and this runner is amd64, so the
-      # platform is stated rather than inherited. Getting this wrong produces a
-      # deploy failure that says nothing about architecture.
+      # The instance is arm64 and this runner is amd64, so the platform is stated
+      # rather than inherited. Getting this wrong produces a container that dies on
+      # exec format error, which says nothing about where it was built.
       - uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
 
       - uses: docker/setup-buildx-action@v3
 
+      # Two tags for two jobs. `latest` is what the box polls, and moving it is the
+      # entire act of deploying. The sha tag is what makes a rollback possible: it
+      # is the only record of which digest was which commit once `latest` has moved
+      # on. GIT_SHA is the same value a third time, baked in so the running process
+      # can be asked rather than inferred.
       - name: Build and push linux/arm64
         uses: docker/build-push-action@v6
         with:
@@ -73,45 +82,32 @@ jobs:
           platforms: linux/arm64
           push: true
           provenance: false
+          build-args: |
+            GIT_SHA=${{ steps.commit.outputs.sha }}
           tags: |
             ${{ env.ECR_REPOSITORY }}:${{ steps.commit.outputs.sha }}
             ${{ env.ECR_REPOSITORY }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Pin the revision to this commit's image rather than deploying :latest, so
-      # rollback is "point the service at an older revision" and nothing else.
-      - name: Register a task definition revision for this commit
-        id: taskdef
+      # A 200 from `/healthz` is not evidence of a deploy — the previous image
+      # would answer it just as cheerfully. The version field is, because it comes
+      # out of the image being waited for. The box polls every 60s and the
+      # container takes another ~40s to migrate and bind, so most of this budget is
+      # slack for a restart that goes badly.
+      - name: Wait for the instance to adopt this commit
         run: |
-          aws ecs describe-task-definition --task-definition "$TASK_FAMILY" \
-            --query taskDefinition > current.json
-          jq --arg image "${ECR_REPOSITORY}:${{ steps.commit.outputs.sha }}" '
-            .containerDefinitions[0].image = $image
-            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
-                  .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
-          ' current.json > next.json
-          revision=$(aws ecs register-task-definition --cli-input-json file://next.json \
-            --query 'taskDefinition.revision' --output text)
-          echo "revision=$revision" >> "$GITHUB_OUTPUT"
-          echo "registered ${TASK_FAMILY}:${revision}"
-
-      - name: Deploy
-        run: |
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
-            --task-definition "${TASK_FAMILY}:${{ steps.taskdef.outputs.revision }}" \
-            --query 'service.taskDefinition' --output text
-          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
-          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
-            --query 'services[0].[runningCount,desiredCount,taskDefinition]' --output text
-
-      - name: Check the deployed service answers over the tunnel
-        run: |
-          for i in $(seq 1 20); do
-            code=$(curl -sS -o /dev/null -w '%{http_code}' https://api.flakehound.com/healthz || true)
-            echo "healthz=$code"
-            [ "$code" = "200" ] && exit 0
+          want='${{ steps.commit.outputs.sha }}'
+          for _ in $(seq 1 60); do
+            body=$(curl -sS --max-time 10 https://api.flakehound.com/healthz || true)
+            got=$(printf '%s' "$body" | jq -r '.version // "none"' 2>/dev/null || echo none)
+            echo "healthz version=${got} want=${want}"
+            if [ "$got" = "$want" ]; then
+              echo "production is serving ${want}"
+              exit 0
+            fi
             sleep 10
           done
-          echo "the tunnel never came back up" >&2
+          echo "the instance never adopted ${want}; it is still on ${got}" >&2
+          echo "the image is pushed, so this is the box not restarting, not a bad build" >&2
           exit 1

@@ -40,7 +40,19 @@ async def count(session, model) -> int:
 async def test_healthz_needs_no_auth_and_no_database(client):
     response = await client.get("/healthz")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "ok", "version": "unknown"}
+
+
+async def test_healthz_names_the_commit_the_image_was_built_from(client, monkeypatch):
+    """The deploy is pull-based, so this field is how CI knows its image is serving.
+
+    `unknown` above is what an unstamped build reports; the Dockerfile sets `GIT_SHA`
+    and CI passes the commit into it.
+    """
+    settings = get_settings()
+    monkeypatch.setattr(settings, "git_sha", "0f1e2d3c4b5a")
+
+    assert (await client.get("/healthz")).json()["version"] == "0f1e2d3c4b5a"
 
 
 async def test_a_signed_delivery_becomes_a_delivery_row_and_a_queue_row(client, db_session):
