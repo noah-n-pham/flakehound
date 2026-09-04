@@ -57,7 +57,7 @@ JOBS_JOB_TYPE = "backfill_jobs"
 BACKFILL_PRIORITY = 1
 # **The observational crawl is lower still.** It shares one 5,000/hour bucket with a
 # real user's history (D-046), so it must lose to both live events and installed
-# backfill — nobody's dashboard may be slow because the public board is filling up.
+# backfill. Nobody's dashboard may be slow because the public board is filling up.
 # `claim_batch` orders by priority, so this is a constant rather than a mechanism.
 OBSERVED_PRIORITY = 2
 # A matrix wide enough to need more than this many pages of jobs does not exist.
@@ -90,7 +90,7 @@ def request_identity(repo: Repository) -> int:
     """Whose token reads this repo, and whose bucket pays for it.
 
     An installed repo uses its own installation. An observed one has no installation
-    at all — that is what `source = 'observed'` means — so it borrows the observation
+    at all (that is what `source = 'observed'` means), so it borrows the observation
     identity, which is an ordinary installation token that happens to be able to read
     any public repository (D-046).
     """
@@ -117,7 +117,7 @@ class Window:
         """Keep the newest half. The older half is exactly the next window.
 
         Narrowing moves `start` forward and leaves `end` alone, and the walk
-        derives the next window's `end` from this one's `start` minus a day — so
+        derives the next window's `end` from this one's `start` minus a day, so
         halving can never open a gap, whatever it does to the window size.
         """
         return Window(start=self.end - timedelta(days=self.span_days // 2), end=self.end)
@@ -176,7 +176,7 @@ async def _enqueue(
 async def _pending_runs_row(session: AsyncSession, repo_id: int) -> int | None:
     """A backfill row already waiting for this repo.
 
-    Two of them would crawl the same cursor twice — harmless, because every
+    Two of them would crawl the same cursor twice: harmless, because every
     write is an upsert, but it doubles the API spend for nothing.
     """
     return (
@@ -467,8 +467,8 @@ async def _record_job(
 ) -> None:
     head_sha = job["head_sha"]
     run_id = job["run_id"]
-    # An earlier attempt has no row of its own — the listing only described the
-    # latest — so it is stubbed from the job the same way a `workflow_job`
+    # An earlier attempt has no row of its own (the listing only described the
+    # latest), so it is stubbed from the job the same way a `workflow_job`
     # webhook stubs its run. The composite foreign key requires it.
     await upsert_run(
         session,
@@ -493,7 +493,7 @@ async def start_observed_backfills(
     """Queue the crawl for up to `limit` admitted repositories that have none yet.
 
     Bounded on purpose. The pool is deliberately larger than the board needs, so the
-    crawl expands a few repositories at a time until there are enough genuine rows —
+    crawl expands a few repositories at a time until there are enough genuine rows,
     rather than committing the whole shared rate-limit budget to it in one pass.
 
     Only `pending` repos are picked up, so running this twice does not restart a crawl

@@ -1,13 +1,13 @@
 /**
  * The BFF's only door to FastAPI. Server-side only: the internal bearer token
  * lives in this process and never reaches the browser, which is why neither
- * variable is NEXT_PUBLIC_. A missing variable throws — a dashboard that
+ * variable is NEXT_PUBLIC_. A missing variable throws. A dashboard that
  * silently renders nothing looks the same as a healthy empty account.
  *
  * Every read also carries `X-Authorized-Repo-Ids`, the set resolved in
  * `lib/github.ts` from GitHub's installations API. It is a **required argument**
  * rather than something looked up in here, because the caller is the only one that
- * knows whether anybody is signed in — and the API answers 400 rather than
+ * knows whether anybody is signed in, and the API answers 400 rather than
  * unfiltered if it is missing, so forgetting is loud instead of dangerous.
  */
 
@@ -35,7 +35,7 @@ export type JobRow = {
 
 /**
  * One ranked job. Both bounds and the point estimate arrive from the API, which is
- * the only place the Wilson interval is computed — the width of the interval is what
+ * the only place the Wilson interval is computed. The width of the interval is what
  * says how much the rate is worth believing, so it travels with it.
  */
 export type FlakyRow = {
@@ -65,8 +65,8 @@ export type HistoryAttempt = {
 };
 
 /**
- * One commit's worth of one job. `state` is derived by the API from the attempts —
- * `flaked` beats `failed` beats `passed` — and the page draws it rather than
+ * One commit's worth of one job. `state` is derived by the API from the attempts
+ * (`flaked` beats `failed` beats `passed`) and the page draws it rather than
  * re-deciding it, for the same reason it never recomputes a Wilson bound.
  */
 export type CommitHistory = {
@@ -84,7 +84,7 @@ export type CommitHistory = {
 /**
  * One slice of a repo's Actions time. `job_name` is null when grouping by workflow.
  *
- * `seconds` is wall clock and **not a bill** — GitHub rounds each job up to the minute
+ * `seconds` is wall clock and **not a bill**. GitHub rounds each job up to the minute
  * and multiplies by a runner factor, neither of which the Actions API exposes. `share`
  * is computed by the API so two pages cannot disagree about the denominator.
  */
@@ -122,7 +122,7 @@ export type FlakeProof = {
 };
 
 /**
- * The same row on the public board, which spans repos and so must name one — and,
+ * The same row on the public board, which spans repos and so must name one, and,
  * because it publishes a claim about somebody else's repository, must carry both the
  * workflow the job belongs to and a job run that proves the claim.
  *
@@ -197,7 +197,7 @@ export function listFlaky(
  * One job's timeline, newest commit first. `limit` counts commits, not attempts.
  *
  * The name is a path segment because that is how the API addresses it, and job names
- * are stored whole — matrix values, spaces, brackets and all — so it is encoded here
+ * are stored whole (matrix values, spaces, brackets and all), so it is encoded here
  * rather than trusted to survive as typed. `workflowId` narrows the name to one
  * workflow, since two workflows can run a job of the same name and they are not the
  * same job.
@@ -259,7 +259,7 @@ export function listDurationTrend(
 }
 
 /**
- * The public board, and the one read that carries **no credentials at all** — not the
+ * The public board, and the one read that carries **no credentials at all**: not the
  * bearer token and not an authorized-repo header. That is deliberate rather than
  * economical: the endpoint takes no repo id and filters `private = false` in its own
  * SQL, so there is nothing for a header to widen, and sending one anyway would suggest

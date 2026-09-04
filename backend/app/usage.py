@@ -8,7 +8,7 @@ arithmetic done worse.
 Three honesty constraints shape the shapes below.
 
 **A percentile cannot be re-aggregated.** Summing daily p50s is meaningless, and there
-is no way back from a set of per-day percentiles to the window's percentile — the
+is no way back from a set of per-day percentiles to the window's percentile. The
 underlying observations are gone. So the duration *trend* is the per-day series
 verbatim, one row per day, and the minutes table reports a **mean** per run rather
 than a median. A window-wide p95 would need either raw job rows or a t-digest, and
@@ -22,7 +22,7 @@ cannot support. The endpoint says `seconds` for that reason, and the page says s
 words.
 
 **A job name is only unique inside its workflow.** Two workflows can run a job of one
-name, so grouping minutes by job name alone would merge two different jobs — the same
+name, so grouping minutes by job name alone would merge two different jobs. The same
 mistake Signal B avoids by grouping on the workflow too. `group_by=job` therefore
 groups on `(workflow_id, job_name)`, and the duration trend's grain is
 `(workflow_id, job_name, day)`.
@@ -89,7 +89,7 @@ async def minutes_attribution(
     `share` is each row's fraction of the window's total, computed here rather than by
     the caller so that two pages printing "38% of your minutes" cannot disagree about
     the denominator. It is a ratio of sums, not a statistic, so there is no interval on
-    it — every run in the window is counted, which is what makes it exact rather than
+    it. Every run in the window is counted, which is what makes it exact rather than
     estimated.
 
     The workflow name comes from a left join, so a job whose `workflow_run` event has
@@ -133,7 +133,7 @@ async def minutes_attribution(
         )
         for row in rows
     ]
-    # Biggest first, then by name so a `limit` cuts the same rows off every time — most
+    # Biggest first, then by name so a `limit` cuts the same rows off every time. Most
     # of a quiet repo's rows are tied at zero seconds.
     attribution.sort(key=lambda row: (row.workflow_name or "", row.job_name or ""))
     attribution.sort(key=lambda row: row.seconds, reverse=True)
@@ -154,7 +154,7 @@ async def duration_trend(
     The rollup's own rows, unaggregated: a percentile is not summable, so a "trend"
     is the only shape this data can honestly take.
 
-    A day with no finished runs has no row rather than a zero — the job did not take
+    A day with no finished runs has no row rather than a zero. The job did not take
     zero seconds that day, it did not run. Callers draw that as a gap.
 
     `workflow_id` narrows to one series. Without it a job name that exists in two

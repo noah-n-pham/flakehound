@@ -1,20 +1,20 @@
 """Per-installation rate limiting for the GitHub API.
 
 An installation token gets on the order of 5,000 requests an hour. That budget
-belongs to the installation, not to us, so a local counter is only ever a guess —
-the authority is the `x-ratelimit-*` headers on every response. The bucket here
+belongs to the installation, not to us, so a local counter is only ever a guess.
+The authority is the `x-ratelimit-*` headers on every response. The bucket here
 therefore does two jobs at once: it **paces** requests between responses, and it
 **corrects itself** from whatever GitHub last said.
 
 Three things are honoured, and they are not the same thing:
 
-* `x-ratelimit-remaining` — how much of the primary budget is left. Our token
+* `x-ratelimit-remaining`: how much of the primary budget is left. Our token
   count is clamped down to it and never up, because a request in flight has
   already been spent as far as we are concerned and not yet as far as GitHub is.
-* `x-ratelimit-reset` — the instant the primary window turns over *wholesale*.
+* `x-ratelimit-reset`: the instant the primary window turns over *wholesale*.
   A token bucket refills continuously and GitHub's does not, so the window
   boundary is modelled separately: at that instant the allowance is restored.
-* `retry-after` — the secondary limit, which is about request *shape* rather
+* `retry-after`: the secondary limit, which is about request *shape* rather
   than budget and can arrive with thousands of requests still remaining. It is a
   hard block, independent of the bucket.
 

@@ -3,7 +3,7 @@
 Ranking by raw rate is the trap: one flake in two runs would
 outrank fifty in a thousand. The rank key is therefore the **lower bound of the
 Wilson score interval at 95% confidence**, which asks "how bad could this job be, at
-worst, given how little we have seen" — so a job needs sustained evidence before it
+worst, given how little we have seen". So a job needs sustained evidence before it
 climbs, and the interval width is itself the honest statement of what is known.
 
 The point estimate and both bounds are stored and displayed.
@@ -39,7 +39,7 @@ def wilson_interval(flakes: int, opportunities: int, z: float = Z_95) -> Wilson 
     so null is the honest answer rather than a division by zero.
 
     Unlike the normal approximation, this stays inside [0, 1] and stays sensible at
-    p = 0 and p = 1, which is exactly where CI data lives — most jobs never flake, and
+    p = 0 and p = 1, which is exactly where CI data lives. Most jobs never flake, and
     a job seen three times and flaky three times must not be reported as certainly
     100% flaky.
     """
@@ -133,7 +133,7 @@ async def flaky_jobs(
 ) -> list[JobFlakiness]:
     """The leaderboard for one repo: jobs ranked by their Wilson lower bound.
 
-    Served from `job_stats_daily` — a window of daily rows summed, rather
+    Served from `job_stats_daily`: a window of daily rows summed, rather
     than a window of job executions scanned. The counts mean exactly what they meant
     when this read raw facts, because the rollup counts through the same
     `opportunity_filter()` and the same evidence job ids (see `app/rollup.py`); what
@@ -142,7 +142,7 @@ async def flaky_jobs(
     Two consequences of reading days rather than timestamps. The window is a whole
     number of UTC days, so `window_days=1` means "since the start of yesterday" rather
     than "since this time yesterday". And a job whose runs were all ineligible has a
-    rollup row with zero opportunities, where the raw query simply had nothing — the
+    rollup row with zero opportunities, where the raw query simply had nothing. The
     HAVING clause is what keeps such a job off the leaderboard rather than on it with
     an undefined rate.
     """
@@ -183,7 +183,7 @@ async def flaky_jobs(
 def _ranked[RowT: JobFlakiness](leaderboard: list[RowT], limit: int) -> list[RowT]:
     # Ranked by the lower bound; opportunities break a tie, because the job we have
     # watched longer is the more useful of two equally suspicious ones. Anything still
-    # tied is ordered by name, so a `limit` cuts the same rows off every time — sort is
+    # tied is ordered by name, so a `limit` cuts the same rows off every time. Sort is
     # stable, so the first pass survives inside the second's ties.
     leaderboard.sort(key=lambda job: job.identity)
     leaderboard.sort(key=lambda job: (job.rank_key, job.opportunities), reverse=True)
@@ -203,15 +203,15 @@ async def public_flaky_jobs(
     **This query takes no repo id.** Which rows are visible is decided entirely by a
     join to `repositories` filtered on `private = false`, so there is no parameter a
     caller could supply to reach a private repo, and no way to forget the filter and
-    still get rows back — the join is where the repo's name comes from.
+    still get rows back. The join is where the repo's name comes from.
 
     `active = false` is excluded too, and it now means **two different things** depending
-    on how the repo got here — the board spans both kinds.
+    on how the repo got here. The board spans both kinds.
 
     For an **installed** repo it is consent: removing the App is the nearest thing to
     withdrawing it, and continuing to publish that repo's data afterwards is not
     defensible. For an **observed** repo there was never consent to withdraw, so the flag
-    instead records whether the repo is still a legitimate subject — public, non-archived,
+    instead records whether the repo is still a legitimate subject: public, non-archived,
     and still there. One that went private, was archived, or was deleted is deactivated by
     the crawl and leaves the board through this same predicate.
 
@@ -220,13 +220,13 @@ async def public_flaky_jobs(
     `job_stats_daily` stay rather than being deleted, because they were true when written.
 
     Served from the rollup like every other aggregate, so the same window rules apply
-    as `flaky_jobs()` — a whole number of UTC days, current to the last sweep.
+    as `flaky_jobs()`: a whole number of UTC days, current to the last sweep.
 
     `min_flakes` is opt-in and defaults to keeping everything, because a leaderboard
     that lists a repo's clean jobs below its flaky ones is telling the truth. It exists
     because the *page* is a different claim: a ten-row board headed "the flakiest CI"
     must not contain a job that never flaked, and the Wilson lower bound cannot be
-    trusted to exclude one — `wilson_interval(0, n)` returns `3.5e-18`, not zero, so
+    trusted to exclude one. `wilson_interval(0, n)` returns `3.5e-18`, not zero, so
     "the bound is positive" is not the filter it appears to be.
     """
     cutoff = ((now or datetime.now(UTC)) - timedelta(days=window_days)).date()
@@ -299,14 +299,14 @@ async def _board_proofs(
 ) -> dict[tuple[int, int | None, str], FlakeProof]:
     """The newest failing job run behind each ranked row, one query for the whole board.
 
-    Recovered by expanding `flake_events.evidence.job_ids` onto `jobs` — the same
-    mapping the rollup counts `flakes` through — so a proof is one of the job runs that
+    Recovered by expanding `flake_events.evidence.job_ids` onto `jobs` (the same
+    mapping the rollup counts `flakes` through), so a proof is one of the job runs that
     put the row on the board rather than a second opinion about it. A row with no flakes
     gets no proof for exactly that reason, and needs none.
 
     That join, rather than the event's own columns, is also what makes a proof
     attributable to a workflow. Signal A groups by run and leaves `workflow_id` null,
-    while a board row is a (workflow, job name) pair — and two workflows in one repo can
+    while a board row is a (workflow, job name) pair, and two workflows in one repo can
     run a job of the same name, which is not hypothetical: `ROCm/rocm-systems` has
     "Multi-Arch CI Summary" in two of them. `jobs.workflow_id` is what separates them.
     """
@@ -325,7 +325,7 @@ async def _board_proofs(
         .subquery()
     )
     # DISTINCT ON takes the first row of each group, which the ORDER BY makes the most
-    # recent failure — the one a reader checking the board would look for first.
+    # recent failure: the one a reader checking the board would look for first.
     newest = (
         select(
             Job.repo_id,
@@ -371,7 +371,7 @@ async def flaky_jobs_from_facts(
     limit: int = 50,
     now: datetime | None = None,
 ) -> list[JobFlakiness]:
-    """The same leaderboard computed straight from the job rows — the rollup's oracle.
+    """The same leaderboard computed straight from the job rows: the rollup's oracle.
 
     Nothing in production calls this. It exists because "the rollup is correct" is
     only a claim if something independent can compute the same answer, and this is
@@ -379,7 +379,7 @@ async def flaky_jobs_from_facts(
     Delete it only alongside that test.
 
     A *flaky job run* is one whose job id a signal named in its evidence. That is the
-    numerator, and it counts the same thing as the denominator — a flake event is
+    numerator, and it counts the same thing as the denominator: a flake event is
     "an opportunity satisfying Signal A or B", so both sides are counts of job
     runs. Counting event rows instead would mix units and double-count a
     re-run recovery, which both signals legitimately report.

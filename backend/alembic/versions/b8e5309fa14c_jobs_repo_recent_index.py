@@ -1,7 +1,7 @@
 """an index for one repo's newest job executions
 
 `/api/repos/{id}/jobs` sequentially scanned the repo's entire job table to return
-fifty rows — 45 ms against 60k, and linear in history from there. The ordering is
+fifty rows: 45 ms against 60k, and linear in history from there. The ordering is
 spelled out because a b-tree only satisfies a sort it matches exactly, and `DESC`
 alone would mean NULLS FIRST while the query asks for NULLS LAST.
 

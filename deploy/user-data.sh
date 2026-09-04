@@ -6,8 +6,8 @@
 # and the four scripts and the unit file it installs are embedded here rather
 # than fetched, because a fresh box has no way to read a private repository.
 #
-# The instance is cattle. There is no shell on it — the build's IAM user is
-# denied every SSM action — so changing how it is set up means editing this file
+# The instance is cattle. There is no shell on it (the build's IAM user is
+# denied every SSM action), so changing how it is set up means editing this file
 # and launching a replacement. That is a constraint, and it is also the property
 # that keeps the box's configuration honest.
 #
@@ -74,7 +74,7 @@ systemctl enable --now docker
 install -d -m 0700 /run/flakehound
 
 # ---------------------------------------------------------------------------
-# flakehound-secrets — the container's environment, assembled on the box.
+# flakehound-secrets: the container's environment, assembled on the box.
 #
 # Written to tmpfs, so no credential is ever on the disk, in the image, or in a
 # process argument list. It took over from the ECS task definition's `secrets`
@@ -105,8 +105,8 @@ db_user=$(printf '%s' "$rds" | python3 -c 'import json,sys; print(json.load(sys.
 db_password=$(printf '%s' "$rds" | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])')
 
 # The App key is a PEM. `docker --env-file` cannot carry a value with newlines,
-# so the key goes to a file and the app is pointed at it — the same shape local
-# development already uses. Owned by the container's uid, not by root.
+# so the key goes to a file and the app is pointed at it. That is the same shape
+# local development already uses. Owned by the container's uid, not by root.
 secret 'arn:aws:secretsmanager:us-east-1:753397111940:secret:flakehound/github-app-private-key-SMRJmp' \
   > "${RUN_DIR}/github-app.pem"
 chown 10001:10001 "${RUN_DIR}/github-app.pem"
@@ -132,7 +132,7 @@ chmod 0600 "${RUN_DIR}/env"
 SCRIPT
 
 # ---------------------------------------------------------------------------
-# flakehound-image — resolve the tag to a digest, pull it, and record it.
+# flakehound-image: resolve the tag to a digest, pull it, and record it.
 #
 # The container is always started **by digest, never by tag.** A tag can move
 # under a running unit, and then a restart would silently land on different
@@ -169,7 +169,7 @@ EOF
 SCRIPT
 
 # ---------------------------------------------------------------------------
-# flakehound-run — the container, in the foreground.
+# flakehound-run: the container, in the foreground.
 #
 # A wrapper rather than a long ExecStart line, because systemd reads
 # EnvironmentFile *before* ExecStartPre runs: the digest that ExecStartPre had
@@ -189,8 +189,8 @@ LOG_GROUP=/flakehound/app
 # shellcheck disable=SC1091
 . /run/flakehound/runtime
 
-# The port is published on loopback only. Nothing on the network can reach it —
-# the security group has no inbound rule either — and it exists so that a deploy
+# The port is published on loopback only. Nothing on the network can reach it
+# (the security group has no inbound rule either), and it exists so that a deploy
 # can gate on the container's own health check and so the load tests SPEC §10
 # asks for can hit the container directly instead of measuring Cloudflare.
 #
@@ -209,7 +209,7 @@ exec /usr/bin/docker run --rm --name flakehound \
 SCRIPT
 
 # ---------------------------------------------------------------------------
-# flakehound-poll — the deploy.
+# flakehound-poll: the deploy.
 #
 # CI has no way to reach this box: the IAM user is denied every SSM action and
 # the security group has no inbound rule, so there is nothing to push *to*
@@ -217,8 +217,8 @@ SCRIPT
 # the `latest` tag, and stops; a minute later this notices the tag points at a
 # digest that is not the one running, and restarts the unit onto it.
 #
-# It compares digests rather than tags because the tag never changes — that is
-# the whole point of a tag — and the digest is what `flakehound-image` already
+# It compares digests rather than tags because the tag never changes (that is
+# the whole point of a tag), and the digest is what `flakehound-image` already
 # recorded for the container that is running right now.
 #
 # Restarting is all it does. It does not pull, does not resolve a second time,
@@ -300,7 +300,7 @@ Type=exec
 Restart=always
 RestartSec=15s
 # Rate limiting is off on purpose. The default gives up after five restarts and
-# leaves the unit failed — and there is no shell on this box to start it again,
+# leaves the unit failed, and there is no shell on this box to start it again,
 # so a service that has stopped trying is a service that is down until someone
 # launches a new instance. Fifteen seconds between attempts is already not a hot
 # loop, and ECS would have gone on replacing the task forever too.
@@ -318,10 +318,10 @@ WantedBy=multi-user.target
 UNIT
 
 # ---------------------------------------------------------------------------
-# Boot self-test. Proves the four things that can only be wrong on a real box —
-# the image runs on this architecture, the secrets assembled into a usable
-# credential, RDS admits this security group, and the schema is the expected one
-# — before anything starts serving. The image declares CMD and no ENTRYPOINT, so
+# Boot self-test. Proves the four things that can only be wrong on a real box
+# (the image runs on this architecture, the secrets assembled into a usable
+# credential, RDS admits this security group, and the schema is the expected one)
+# before anything starts serving. The image declares CMD and no ENTRYPOINT, so
 # naming a command here replaces the three-process startup instead of appending
 # to it.
 # ---------------------------------------------------------------------------

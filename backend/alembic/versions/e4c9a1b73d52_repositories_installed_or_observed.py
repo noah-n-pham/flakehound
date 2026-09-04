@@ -55,8 +55,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # An observed repo cannot be represented once the column is gone, and attaching it
-    # to some arbitrary installation would be a fabrication. Drop those rows instead —
-    # they are re-crawlable from public GitHub, which is the whole point of them.
+    # to some arbitrary installation would be a fabrication. Drop those rows instead.
+    # They are re-crawlable from public GitHub, which is the whole point of them.
     #
     # Their facts have to go first: five tables reference `repositories.id` and none of
     # those foreign keys cascade, so deleting the repo alone raises. Children before

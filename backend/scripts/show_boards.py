@@ -1,7 +1,7 @@
 """Read the production boards back over the tunnel and print them side by side.
 
-The claim `/public/flaky` makes is a negative one — a private repo's rows are *not*
-there — and a negative is only evidence if the rows exist somewhere. So this prints
+The claim `/public/flaky` makes is a negative one (a private repo's rows are *not*
+there), and a negative is only evidence if the rows exist somewhere. So this prints
 what the token-gated endpoint holds for the private repo, then the public board, then
 which repos were eligible for it at all. Run against production; reads only.
 """

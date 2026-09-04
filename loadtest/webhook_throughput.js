@@ -21,7 +21,7 @@ const DURATION = __ENV.DURATION || '30s';
 
 // A VU is busy for one request, so the concurrency an arrival rate needs is
 // rate x latency: 400/s at 10ms needs 4, and at 1s needs 400. Sizing the budget
-// as a multiple of the rate therefore sizes it for the latency you assumed —
+// as a multiple of the rate therefore sizes it for the latency you assumed,
 // which is how the first run of this made k6 the bottleneck and reported it as
 // the service's ceiling. A flat, generous budget instead, the same at every
 // plateau, so `dropped_iterations` means the service stopped keeping up.
@@ -60,7 +60,7 @@ export const options = {
     http_req_duration: [{ threshold: 'p(99)<1000', abortOnFail: false }],
     // Not assertions. A threshold is the only way to make k6 materialise a
     // tagged submetric, and the reported numbers must exclude setup's one
-    // health check — at a short plateau it is enough to move a percentile.
+    // health check. At a short plateau it is enough to move a percentile.
     'http_reqs{name:webhook}': ['count>=0'],
     'http_req_duration{name:webhook}': ['max>=0'],
     'http_req_failed{name:webhook}': ['rate>=0'],
@@ -82,7 +82,7 @@ export function setup() {
   //
   // `base` does the same job for the *fact* ids, and it is not decoration. k6
   // restarts __VU and __ITER in every process, so a ladder of plateaus without it
-  // sends distinct deliveries carrying repeated job and run ids — the upserts then
+  // sends distinct deliveries carrying repeated job and run ids. The upserts then
   // update rows instead of inserting them, and the worker's drain rate comes out
   // measuring the cheaper of the two paths. It read 30,239 deliveries against 1,999
   // new job rows before this existed.

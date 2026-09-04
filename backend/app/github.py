@@ -8,7 +8,7 @@ is scoped to that one installation.
 
 So every API call needs a token, tokens expire, and buying one costs a request.
 The cache is an in-process dict, which is enough because there is exactly one
-worker — a cache server would be a second system to operate for no gain.
+worker. A cache server would be a second system to operate for no gain.
 """
 
 import asyncio
@@ -60,8 +60,8 @@ _tokens: dict[int, InstallationToken] = {}
 # so contention is theoretical, and a single lock cannot deadlock or leak keys.
 _lock = asyncio.Lock()
 
-# The limiter has to outlive a request to be worth anything — its whole state is
-# what the last response said — so it is module-level beside the token cache.
+# The limiter has to outlive a request to be worth anything (its whole state is
+# what the last response said), so it is module-level beside the token cache.
 _limiter: RateLimiter | None = None
 _client: httpx.AsyncClient | None = None
 
@@ -221,7 +221,7 @@ async def api_request(
     sees every response and nothing can spend the budget behind its back. A
     rate-limited response is retried, and the retry is what waits: `observe` has
     already written the block into the bucket, so the next `acquire` sleeps
-    exactly as long as GitHub asked for — or refuses, if that is longer than a
+    exactly as long as GitHub asked for, or refuses, if that is longer than a
     claimed queue row may be held.
     """
     settings = get_settings()

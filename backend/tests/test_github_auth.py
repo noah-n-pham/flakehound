@@ -129,7 +129,7 @@ async def test_the_jwt_is_exchanged_for_an_installation_token(app_credentials, k
     request = route.calls.last.request
     assert request.headers["accept"] == "application/vnd.github+json"
     assert request.headers["x-github-api-version"] == "2022-11-28"
-    # The App JWT is the credential here — not an installation token, which is
+    # The App JWT is the credential here, not an installation token, which is
     # what this call exists to obtain.
     scheme, _, presented = request.headers["authorization"].partition(" ")
     assert scheme == "Bearer"

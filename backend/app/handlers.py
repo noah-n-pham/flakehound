@@ -234,7 +234,7 @@ HANDLERS = {
     "installation_repositories": handle_installation_repositories,
 }
 
-# Backfill rows carry no GitHub event — nothing was delivered to us — so they are
+# Backfill rows carry no GitHub event (nothing was delivered to us), so they are
 # dispatched on `job_type` instead. `webhook` and `reevaluate` both fall through
 # to the event table below. An operator command is the same shape: nobody delivered
 # it either, and the queue is how it reaches the process that can do the work.

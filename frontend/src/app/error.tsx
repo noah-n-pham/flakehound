@@ -20,7 +20,7 @@ import {
  * button is the correct affordance for something transient.
  *
  * `error.digest` is a hash Next assigns on the server, not a message. Nothing about
- * the failure itself reaches the browser, which is deliberate — the messages our
+ * the failure itself reaches the browser, which is deliberate. The messages our
  * reads throw name repo ids and endpoints.
  */
 export default function ErrorBoundary({

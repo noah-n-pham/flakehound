@@ -1,4 +1,4 @@
-"""Authenticated read endpoints. The browser never calls these — Next.js does.
+"""Authenticated read endpoints. The browser never calls these. Next.js does.
 
 Every query here is filtered to the repo ids in `X-Authorized-Repo-Ids`, which the BFF
 resolves from GitHub's installations API. Two rules the endpoints below follow, and a
@@ -10,13 +10,13 @@ third that has to be remembered rather than enforced:
 * **A new endpoint under `/api` is not automatically filtered.** The router's
   dependency supplies the ids; it cannot make a query use them.
 
-Every query here also requires `source = 'installed'`. Observed repos — the public
-board's crawled ones — belong to no installation and therefore to no user, so GitHub's
+Every query here also requires `source = 'installed'`. Observed repos (the public
+board's crawled ones) belong to no installation and therefore to no user, so GitHub's
 installations API can never name one and the authorized set can never contain one. The
 predicate is redundant against a correct BFF and kept anyway: it is what stops a bug in
 the BFF's resolution, or a forged header, from putting a stranger's repository on
 somebody's dashboard. Observed data is public, so this is a correctness guarantee rather
-than a privacy one — `/public/flaky` is where those repos are meant to appear.
+than a privacy one. `/public/flaky` is where those repos are meant to appear.
 """
 
 from datetime import date, datetime
@@ -137,7 +137,7 @@ async def _require_repo(session: AsyncSession, repo_id: int, authorized: list[in
     """404 unless this repo exists, is installed, and is one the caller may see.
 
     The authorization check is part of the same query rather than a branch in front of
-    it, so "does it exist" and "may you see it" cannot answer differently — and an
+    it, so "does it exist" and "may you see it" cannot answer differently, and an
     unauthorized repo is indistinguishable from a missing one in the response. An
     observed repo is 404 here for the same reason: it is nobody's repo.
     """
@@ -186,7 +186,7 @@ async def list_jobs(
     """Most recent job executions for one repo, newest first.
 
     Raw facts rather than the rollup, because these are individual executions
-    rather than an aggregate — the rule that reads come from the rollup applies
+    rather than an aggregate. The rule that reads come from the rollup applies
     to the aggregate endpoints, not to this one.
     """
     await _require_repo(session, repo_id, authorized)
@@ -237,7 +237,7 @@ async def job_history_by_commit(
     """One job's pass/fail timeline, grouped by commit, newest first.
 
     The name is a whole path segment rather than a query parameter because job names
-    are stored whole and can contain anything a `name:` key can — `{job_name:path}`
+    are stored whole and can contain anything a `name:` key can. `{job_name:path}`
     is what keeps a name containing a slash addressable instead of a 404.
 
     Raw job rows rather than the rollup, for the reason `app/history.py` states: the
@@ -298,8 +298,8 @@ async def list_flaky_jobs(
     the numbers are as current as the worker's last sweep.
 
     Both bounds and the point estimate are returned rather than the rank key alone,
-    because the interval's width is what tells a reader how much to trust the rate —
-    a job seen three times is not the same claim as a job seen three hundred.
+    because the interval's width is what tells a reader how much to trust the rate.
+    A job seen three times is not the same claim as a job seen three hundred.
     """
     await _require_repo(session, repo_id, authorized)
 
@@ -359,7 +359,7 @@ async def job_duration_trend(
     workflow_id: Annotated[int | None, Query()] = None,
     window_days: Annotated[int, Query(ge=1, le=365)] = 30,
 ) -> list[DurationPoint]:
-    """One job's p50 and p95 per UTC day, oldest first — the rollup's rows verbatim.
+    """One job's p50 and p95 per UTC day, oldest first: the rollup's rows verbatim.
 
     A day the job did not finish anything is absent rather than zero, so the series
     has gaps and a caller must draw them as gaps.

@@ -1,11 +1,11 @@
 """The control channel: the handful of things an operator has to be able to trigger.
 
-They used to run as `aws ecs run-task` with a command override — a one-off copy of the
+They used to run as `aws ecs run-task` with a command override: a one-off copy of the
 image, started by hand, printing into CloudWatch (D-022). ECS is gone and Section I
 still needs to drive discovery and crawl tranches, so the capability lives here.
 
 **The endpoint enqueues; the worker works.** A discovery pass is a few minutes of
-HTTP against GitHub, and Cloudflare gives up on an origin request long before that —
+HTTP against GitHub, and Cloudflare gives up on an origin request long before that,
 so a synchronous endpoint would return 524 while the work carried on invisibly behind
 it. Postgres is already the queue, and queue rows are already allowed to exist with no
 webhook delivery behind them, so an operator command is a queue row like any other and
@@ -41,7 +41,7 @@ DISCOVER_JOB_TYPE = "discover_band"
 
 # The same tier as a live delivery, which sounds aggressive and is not: rows inside a
 # tier are claimed oldest-first, so a command created now still waits behind every
-# webhook already pending. What it does buy is not waiting behind the crawl — there
+# webhook already pending. What it does buy is not waiting behind the crawl. There
 # are twelve thousand observed backfill rows at priority 2, and a control channel that
 # queues behind them is not a control channel.
 OPS_PRIORITY = LIVE_PRIORITY
@@ -124,7 +124,7 @@ class Corpus:
     """What Section I has to be able to state, counted rather than estimated.
 
     `observed_done` is the number the roadmap's floor of 335 is measured against, and
-    it counts repositories whose crawl finished — not ones admitted, and not GitHub App
+    it counts repositories whose crawl finished, not ones admitted, and not GitHub App
     installations, neither of which is the corpus.
     """
 

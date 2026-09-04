@@ -1,4 +1,4 @@
-"""The daily rollup — the aggregate every read endpoint is served from.
+"""The daily rollup: the aggregate every read endpoint is served from.
 
 One row per (repo, workflow, job name, UTC day), holding runs, failures,
 opportunities, flakes, and duration aggregates including p50
@@ -9,7 +9,7 @@ window of job executions.
 idempotent in the only sense that matters here: running it twice, or ten times, or
 after a backfill has filled in three-month-old history, converges on the same
 numbers. An incremental counter would need every write path to remember to move it
-and would drift the first time a delivery was replayed — which the reaper guarantees
+and would drift the first time a delivery was replayed, which the reaper guarantees
 will happen.
 
 **And the whole trailing window is recomputed, not just today.** Flake attribution
@@ -22,12 +22,12 @@ wrong. Revisit if a repo's window ever costs enough to measure.
 Each count is deliberate, because the leaderboard's numerator and denominator have
 to keep counting the same unit:
 
-* `runs` — every job execution that finished that day, whatever its conclusion.
+* `runs`: every job execution that finished that day, whatever its conclusion.
   This is the unit minutes attribution and the duration trend are about.
-* `opportunities` — those runs that pass `opportunity_filter()`, the eligible set.
+* `opportunities`: those runs that pass `opportunity_filter()`, the eligible set.
   The denominator of the flake rate.
-* `failures` — opportunities whose outcome is a failure.
-* `flakes` — opportunities a signal named in its evidence, via
+* `failures`: opportunities whose outcome is a failure.
+* `flakes`: opportunities a signal named in its evidence, via
   `detection.implicated_job_ids()`. One flake event stands for a whole group, so the
   job ids in `evidence.job_ids` are what recovers the individual job runs, and a run
   named by both signals is counted once. Every implicated run is an opportunity by
@@ -203,7 +203,7 @@ async def rollup_repository(
 
 
 async def repos_with_recent_activity(session: AsyncSession, since: datetime) -> list[int]:
-    """Repos whose job rows moved since `since` — the ones whose rollup is stale.
+    """Repos whose job rows moved since `since`: the ones whose rollup is stale.
 
     Query: served by `ix_jobs_recent_activity` on jobs(updated_at).
     """

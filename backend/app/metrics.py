@@ -1,6 +1,6 @@
 """Operational counters, sampled once a minute into `metrics_snapshots`.
 
-The whole observability story is this table plus the structured logs — no
+The whole observability story is this table plus the structured logs: no
 OpenTelemetry, no Prometheus, no Grafana. At one service and one worker
 that is not a compromise: a counter you can `SELECT` and a log line you can grep
 answer every question those systems would, and neither has to be operated.
@@ -9,7 +9,7 @@ answer every question those systems would, and neither has to be operated.
 from every other one here. Rows are name/value/labels so a new counter never needs a
 migration, `captured_at` is truncated to the minute so re-running a pass overwrites
 its own sample rather than duplicating it, and samples older than
-`metrics_retention_days` are pruned — at roughly twenty series a minute this table
+`metrics_retention_days` are pruned. At roughly twenty series a minute this table
 would otherwise out-grow the facts it describes.
 
 Three numbers are deliberately not in this table:
@@ -18,7 +18,7 @@ Three numbers are deliberately not in this table:
   A slow statement's text and parameters do not fit a numeric series, and the thing
   you want when one shows up is the query, not its rate.
 * **API latency per endpoint** lives in the API process, which does not write this
-  table — the worker does, so that there is exactly one writer. It is kept in
+  table. The worker does, so that there is exactly one writer. It is kept in
   memory by `app/apimetrics.py` instead.
 * **Monthly AWS spend** is not something the application can read: Cost Explorer is
   outside the set of services this system uses, so the figure is tracked out of band.
@@ -187,7 +187,7 @@ def _rate_limit_headroom() -> list[Metric]:
 
     Only installations this process has actually called have a bucket, so the series
     appears when the first request is made rather than being invented at zero. In
-    the API process there are none — every GitHub call is the worker's.
+    the API process there are none. Every GitHub call is the worker's.
     """
     from app.github import get_limiter
 
@@ -225,7 +225,7 @@ async def store_samples(
     """Write one process's sample of the minute containing `now`. Caller commits.
 
     `captured_at` is truncated to the minute and the insert upserts, so two passes
-    inside one minute leave one sample rather than two — the same discipline every
+    inside one minute leave one sample rather than two: the same discipline every
     other write path here follows, for the same reason: something will eventually
     run twice.
 
@@ -233,7 +233,7 @@ async def store_samples(
     series.** The worker owns everything measurable from the database; the API owns
     the counters only it can see (`app/apimetrics.py`). The unique key is
     `(captured_at, name, labels)`, so the rule is one writer per *series*, not one
-    writer per table — nothing here would stop a second writer from fighting over one
+    writer per table. Nothing here would stop a second writer from fighting over one
     name, so a new series has to belong to exactly one process by construction.
     """
     captured_at = now.replace(second=0, microsecond=0)
@@ -296,7 +296,7 @@ class Sample:
 async def latest_samples(
     session: AsyncSession, *, now: datetime | None = None, lookback_seconds: float | None = None
 ) -> list[Sample]:
-    """The newest point of every series still reporting — what `/internal/metrics` serves.
+    """The newest point of every series still reporting: what `/internal/metrics` serves.
 
     **Per series rather than per minute**, because the two writers run on independent
     timers: the worker's minute and the API's minute usually coincide and sometimes do

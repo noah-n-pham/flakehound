@@ -6,8 +6,8 @@ commit SHA cannot change, which is what makes it the cleanest signal available:
 the code provably did not change between the two conclusions.
 
 Signal B (same-commit disagreement) compares them across every run on one commit,
-which catches flakiness that shows up between separate runs — a push and a pull
-request on the same SHA, or a manual re-dispatch — rather than between attempts.
+which catches flakiness that shows up between separate runs (a push and a pull
+request on the same SHA, or a manual re-dispatch) rather than between attempts.
 A SHA is content-addressed, so a force-push cannot corrupt the grouping: identical
 SHA means identical tree.
 
@@ -70,7 +70,7 @@ def opportunity_filter() -> ColumnElement[bool]:
     Every clause below is an edge case this filter has to get right:
 
     * `cancelled`, `skipped`, `null` (still running), and the advisory conclusions
-      are simply not in the eligible set — a non-terminal job is re-evaluated when
+      are simply not in the eligible set: a non-terminal job is re-evaluated when
       its completion event arrives;
     * `timed_out` is a config flag, eligible and counted as a failure by default;
     * a failure that completed none of its planned steps is a dead runner rather than
@@ -115,8 +115,8 @@ def implicated_job_ids(repo_id: int) -> Select:
 
     One flake event stands for a whole group, so `evidence.job_ids` is the only way
     back from an event to the individual job runs it implicated. Two consumers need
-    that mapping — the rollup counts its `flakes` through it and the job history marks
-    its timeline with it — which is why it lives beside the signals that write it
+    that mapping (the rollup counts its `flakes` through it and the job history marks
+    its timeline with it), which is why it lives beside the signals that write it
     rather than inside either reader.
 
     Distinct matters: a re-run recovery records both signals, so one job id appears in
@@ -168,7 +168,7 @@ async def opportunities_in_run(
 ) -> list[Opportunity]:
     """This job name's opportunities within one run, in attempt order.
 
-    Query: Signal A's lookup of attempts within a run — served by
+    Query: Signal A's lookup of attempts within a run, served by
     `ix_jobs_signal_a` on (repo_id, run_id, name, run_attempt).
     """
     return await _opportunities(
@@ -181,7 +181,7 @@ async def opportunities_on_commit(
 ) -> list[Opportunity]:
     """This job name's opportunities for one workflow at one commit.
 
-    Query: Signal B's grouping key, the hottest query in the system — served by
+    Query: Signal B's grouping key, the hottest query in the system, served by
     `ix_jobs_signal_b` on (repo_id, workflow_id, name, head_sha), and needing no
     join because `head_sha` is denormalized onto jobs for exactly this reason.
     """
@@ -269,7 +269,7 @@ async def evaluate_same_commit_disagreement(
     """Signal B: this job both passed and failed on one commit, in one workflow.
 
     A job whose workflow is still unknown is skipped rather than grouped, because
-    Grouping by `(job_name, head_sha)` alone is wrong — two workflows can run
+    Grouping by `(job_name, head_sha)` alone is wrong. Two workflows can run
     a job of the same name on the same commit and they are different jobs. Such a
     job is re-evaluated when its `workflow_run` event supplies the id.
     """
@@ -343,7 +343,7 @@ async def record_flake_event(
 
     Every caller's `evidence` carries a flat `job_ids` list beside its per-signal
     detail. One row here stands for a whole group, so that list is how the flake rate
-    recovers the individual job runs the signal implicated — see `app/stats.py`.
+    recovers the individual job runs the signal implicated. See `app/stats.py`.
     """
     stmt = insert(FlakeEvent).values(
         repo_id=repo_id,

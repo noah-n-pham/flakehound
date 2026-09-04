@@ -2,14 +2,14 @@
 
 The first test is not a fixture invention. `build and deploy` in this project's own
 repository failed on attempt 1, failed on attempt 2, and passed on attempt 3, all at
-commit 995d950 — job ids, step counts, and run id below are the rows sitting in
+commit 995d950. Job ids, step counts, and run id below are the rows sitting in
 production. **Nothing flaked.** The first two attempts failed because an IAM trust
 policy was wrong and it was fixed between attempts, so an external change is what
 recovered the job. Signal A cannot see that and fires anyway: from the Actions API
 alone this is indistinguishable from a flaky job, and the SHA is identical, so
 "did the code change" does not separate the two.
 The false positive is answered by the Wilson lower bound, which needs sustained
-evidence before anything reaches the top of a leaderboard — not by a heuristic here.
+evidence before anything reaches the top of a leaderboard, not by a heuristic here.
 """
 
 import zlib
@@ -286,7 +286,7 @@ async def test_the_same_job_name_in_another_workflow_is_another_group(db_session
 async def test_a_job_is_not_grouped_until_its_workflow_is_known(db_session):
     """A `workflow_job` payload carries no workflow id, so grouping has to wait.
 
-    Skipping is the only safe answer — grouping on a NULL workflow would merge the
+    Skipping is the only safe answer. Grouping on a NULL workflow would merge the
     two workflows the test above keeps apart. The run event then supplies the id and
     the jobs stored before it become groupable.
     """
@@ -382,7 +382,7 @@ async def test_a_skipped_attempt_is_not_an_opportunity(db_session):
 
 
 async def test_an_unfinished_attempt_is_excluded_until_it_completes(db_session):
-    """`conclusion: null` is not terminal — the completion event re-evaluates it."""
+    """`conclusion: null` is not terminal. The completion event re-evaluates it."""
     await deliver(
         db_session,
         attempt(1, "failure"),

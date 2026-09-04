@@ -1,5 +1,5 @@
 /**
- * GitHub login. JWT sessions, **no database adapter** — the session is a
+ * GitHub login. JWT sessions, **no database adapter**. The session is a
  * signed cookie, so login adds no tables to RDS and the BFF stays stateless.
  *
  * Identity is forced to be GitHub's: this is a GitHub App, so GitHub is the only
@@ -29,7 +29,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       clientId: required("GITHUB_CLIENT_ID"),
       clientSecret: required("GITHUB_CLIENT_SECRET"),
       // The provider's default `userinfo` falls through to `/user/emails`
-      // whenever the profile carries no public email — and this App has no
+      // whenever the profile carries no public email, and this App has no
       // permission to read emails, so that is a 403 in the middle of a login
       // that only ever wanted a username. Authorization comes from the
       // installations API, not from an email address, so `/user` is enough.

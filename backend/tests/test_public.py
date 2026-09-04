@@ -1,8 +1,8 @@
-"""`/public/flaky` — the only read endpoint with no auth.
+"""`/public/flaky`: the only read endpoint with no auth.
 
 Every test here is really one question: can anything a stranger says, or anything the
 build forgets, put a private repo's data on this board. So the filter is attacked from
-three directions — a private repo sitting beside a public one, a public repo flipped
+three directions: a private repo sitting beside a public one, a public repo flipped
 private after its rows were already rolled up, and a query parameter smuggled in that
 names the private repo by id.
 """
@@ -27,7 +27,7 @@ from tests.test_detection import (
 )
 
 # The default fixture repo (`khoi/flakehound`, public) plus two more, each with its own
-# run ids so the synthetic job ids stay distinct — a job id is a primary key, and two
+# run ids so the synthetic job ids stay distinct. A job id is a primary key, and two
 # repos delivering the same attempt would overwrite one row with the other.
 SECOND_PUBLIC_REPO_ID = REPO_ID + 1
 PRIVATE_REPO_ID = REPO_ID + 2
@@ -57,7 +57,7 @@ async def seed_three_repos(session) -> None:
     """Two public repos and a private one, each with a job that really flaked.
 
     The public repos are given deliberately different amounts of evidence for the same
-    behaviour — three attempts against two — because that is what the ranking is
+    behaviour (three attempts against two) because that is what the ranking is
     supposed to separate. They also each get a clean job with the same two runs, which
     ties them exactly and is what the tiebreak has to order.
     """
@@ -139,7 +139,7 @@ async def test_a_private_repo_never_appears_beside_a_public_one(client, db_sessi
 
 
 async def test_a_repo_flipped_to_private_drops_off_the_board(client, db_session):
-    """Same rows, same rollup, one flag — and the repo has to vanish.
+    """Same rows, same rollup, one flag, and the repo has to vanish.
 
     Nothing recomputes `job_stats_daily` when a repo goes private, so if the filter
     lived anywhere but the read query, the old rows would keep being served.
@@ -200,8 +200,8 @@ async def test_a_row_carries_the_counts_and_the_whole_interval(client, db_sessio
 async def test_the_board_ranks_across_repos_by_the_wilson_lower_bound(client, db_session):
     """Three attempts of the same behaviour outrank two, and a clean job ranks last.
 
-    Both flaky jobs have a raw rate of 1.0, so raw rate cannot order them at all —
-    what separates them is how much has been seen, which is the whole point of ranking
+    Both flaky jobs have a raw rate of 1.0, so raw rate cannot order them at all.
+    What separates them is how much has been seen, which is the whole point of ranking
     on the lower bound.
     """
     await seed_three_repos(db_session)
@@ -217,7 +217,7 @@ async def test_the_board_ranks_across_repos_by_the_wilson_lower_bound(client, db
 
 
 async def test_rows_tied_on_evidence_are_ordered_deterministically(client, db_session):
-    """Both clean jobs are tied exactly — zero flakes in two runs each — and most of a
+    """Both clean jobs are tied exactly (zero flakes in two runs each) and most of a
     real public board looks like that. Without a tiebreak, `limit` would cut off
     whichever of them the aggregate happened to return second."""
     await seed_three_repos(db_session)
@@ -297,7 +297,7 @@ async def test_the_query_ignores_a_private_repo_even_called_directly(db_session)
 
 
 async def test_min_flakes_keeps_a_job_that_never_flaked_off_the_board(client, db_session):
-    """The board's own filter. It is `flakes`, not the Wilson bound — see
+    """The board's own filter. It is `flakes`, not the Wilson bound. See
     `test_a_zero_flake_rate_does_not_reliably_give_a_zero_lower_bound`, which is why."""
     await seed_three_repos(db_session)
 
@@ -361,7 +361,7 @@ async def test_a_row_is_proved_by_one_of_the_failing_job_runs_it_counted(
 
 
 async def test_a_clean_row_has_no_proof(client, db_session):
-    """Nothing to prove, so nothing is offered — rather than the newest failure of
+    """Nothing to prove, so nothing is offered, rather than the newest failure of
     some other job in the same repo."""
     await seed_three_repos(db_session)
 
@@ -375,7 +375,7 @@ async def test_two_workflows_running_the_same_job_name_get_their_own_proofs(
     client, db_session
 ):
     """The `ROCm/rocm-systems` case, which is why the proof is found through
-    `jobs.workflow_id` and not through the flake event's own columns — Signal A leaves
+    `jobs.workflow_id` and not through the flake event's own columns. Signal A leaves
     `workflow_id` null, so an event cannot say which of two workflows it belongs to."""
     await deliver(
         db_session,

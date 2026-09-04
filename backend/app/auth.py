@@ -32,8 +32,8 @@ def require_authorized_repos(request: Request) -> list[int]:
     Next.js server holds that token and the browser never reaches this service.
 
     **A missing header is a 400, not an empty set and certainly not "everything".**
-    The BFF always knows the answer — a user with no installations sends an empty
-    header deliberately — so absence means a caller that forgot, and the loud
+    The BFF always knows the answer (a user with no installations sends an empty
+    header deliberately), so absence means a caller that forgot, and the loud
     failure is what stops that caller from silently reading every repo. An empty
     *value* is a real answer and yields an empty list, which every query below
     turns into no rows.

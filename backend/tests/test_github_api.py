@@ -1,4 +1,4 @@
-"""`api_request` — every GitHub API call, paced by the installation's bucket.
+"""`api_request`: every GitHub API call, paced by the installation's bucket.
 
 The limiter is unit-tested against a fake clock in `test_ratelimit.py`. What is
 tested here is the wiring: that responses reach the bucket, that a rate-limited

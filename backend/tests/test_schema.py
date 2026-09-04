@@ -215,7 +215,7 @@ async def test_a_rollup_row_is_unique_per_repo_workflow_job_and_day(db_session):
 
 
 # --------------------------------------------------------------------------- #
-# Installed or observed — SPEC §4's two kinds of repository
+# Installed or observed: SPEC §4's two kinds of repository
 #
 # The pairing of `source` with `installation_id` and `private` is the public board's
 # privacy guarantee, and the point of putting it in the database is that it holds
@@ -289,7 +289,7 @@ async def test_an_observed_repo_that_installs_the_app_upgrades_in_place(db_sessi
 
     This is why `source` is a column rather than a second table. The upgrade keeps the
     row, so it keeps its crawled history, its backfill cursor, and every fact and flake
-    event pointing at it — no duplicate repo, no re-crawl, and no identity change.
+    event pointing at it: no duplicate repo, no re-crawl, and no identity change.
     """
     db_session.add(Installation(id=INSTALLATION_ID, account_login="astral-sh"))
     db_session.add(observed_repo())

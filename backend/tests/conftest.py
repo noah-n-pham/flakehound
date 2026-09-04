@@ -64,7 +64,7 @@ async def db_session(database_url: str) -> AsyncIterator[AsyncSession]:
     """A session whose writes are discarded when the test ends.
 
     The session joins an outer transaction as a savepoint, so a test may commit
-    and still leave no trace — including after an IntegrityError.
+    and still leave no trace, including after an IntegrityError.
     """
     engine = create_async_engine(database_url, poolclass=NullPool)
     async with engine.connect() as connection:
@@ -99,7 +99,7 @@ async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
 # Talking to GitHub
 #
 # Here rather than in one test module because more than one module needs them, and a
-# fixture imported across modules shadows itself — ruff's F811 is right about that.
+# fixture imported across modules shadows itself. Ruff's F811 is right about that.
 # --------------------------------------------------------------------------- #
 
 

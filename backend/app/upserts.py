@@ -2,7 +2,7 @@
 
 GitHub's ids are immutable and authoritative, so replaying any payload converges
 to identical state. Enrichment fields use COALESCE(EXCLUDED, existing) wherever a
-later payload may know less than an earlier one — a `workflow_job` event carries
+later payload may know less than an earlier one: a `workflow_job` event carries
 no workflow id, and must never blank one a `workflow_run` event already supplied.
 """
 
@@ -19,7 +19,7 @@ from app.models import Installation, Job, Repository, Workflow, WorkflowRun
 def _status_rank(column: Any) -> Any:
     """How far along an execution a payload claims to be.
 
-    GitHub sends three deliveries per job and per run — queued, in progress, completed —
+    GitHub sends three deliveries per job and per run (queued, in progress, completed),
     and nothing guarantees they are *processed* in that order. `claim_batch` orders which
     rows it claims but `RETURNING` gives no ordering guarantee within a batch, and the
     reaper can re-run one message beside another. So a payload's own status is the only
@@ -39,7 +39,7 @@ def _never_regress(
 
     A payload that is *behind* what we have contributes nothing: an `in_progress` body
     carries a null conclusion and a partial step count, and applying it after the
-    `completed` body would erase a terminal fact. That is not a hypothetical — observed
+    `completed` body would erase a terminal fact. That is not a hypothetical: observed
     against live deliveries, it turned a successful job run into one with no conclusion,
     silently removing it from Signal A's opportunities.
 
@@ -143,13 +143,13 @@ async def upsert_repository(
 
     Only the installation events know whether a repo is still installed, so they
     pass the flag explicitly. A `workflow_job` for a repo that was removed from
-    the install must not quietly re-activate it — that decision belongs to
+    the install must not quietly re-activate it. That decision belongs to
     `installation_repositories`, and a late job event is not evidence of it.
 
     **`source` moves in one direction only, and the asymmetry is the point.** An
     installed write claims the row: it sets `source = 'installed'` and the installation
     id, which is exactly SPEC §4's "a repo that later installs the App becomes installed
-    in place, under the same GitHub repo id" — the crawled history stays, keyed on the
+    in place, under the same GitHub repo id". The crawled history stays, keyed on the
     same GitHub repo id. An observed write never claims it: on conflict it leaves both
     columns alone, so crawling a repo that already installed the App cannot demote it to
     a repo nobody owns. Without that asymmetry the webhook and the crawl would fight over
@@ -209,8 +209,8 @@ async def set_repositories_active(
 ) -> list[int]:
     """Flip the active flag on repos we already know about.
 
-    Nothing is deleted. A removed repo keeps its jobs, runs, and flake events —
-    they are still true, the repo is simply no longer being watched, and rows
+    Nothing is deleted. A removed repo keeps its jobs, runs, and flake events.
+    They are still true, the repo is simply no longer being watched, and rows
     elsewhere reference it by foreign key.
     """
     if not repo_ids:
@@ -230,7 +230,7 @@ async def set_repositories_active(
 async def set_installation_repositories_active(
     session: AsyncSession, *, installation_id: int, active: bool
 ) -> list[int]:
-    """The same, for every repo of one installation — an install or uninstall."""
+    """The same, for every repo of one installation: an install or uninstall."""
     changed = (
         await session.execute(
             update(Repository)
@@ -352,7 +352,7 @@ async def propagate_workflow_id(
     """Fill the workflow id onto every attempt of a run, and its jobs, where unknown.
 
     Returns the names of the jobs that changed, because Signal B cannot group a job
-    whose workflow is unknown — those are exactly the jobs now worth re-evaluating.
+    whose workflow is unknown. Those are exactly the jobs now worth re-evaluating.
     """
     await session.execute(
         update(WorkflowRun)

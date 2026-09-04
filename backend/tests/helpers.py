@@ -14,8 +14,8 @@ async def truncate_all(session: AsyncSession) -> None:
     """Empty every table.
 
     Only a test that commits for real needs this. The `db_session` fixture rolls
-    its work back, but a test that runs concurrent workers cannot — separate
-    connections have to see each other's rows — and anything it leaves behind is
+    its work back, but a test that runs concurrent workers cannot. Separate
+    connections have to see each other's rows, and anything it leaves behind is
     visible to every test that follows.
     """
     tables = ", ".join(table.name for table in Base.metadata.sorted_tables)
@@ -77,7 +77,7 @@ async def deliver(session: AsyncSession, *payloads: dict[str, Any]) -> None:
     """Deliver payloads one at a time, in the order given.
 
     One at a time because rows inserted in a single transaction share
-    `created_at` — `now()` is the transaction's clock — so the dequeue order of a
+    `created_at` (`now()` is the transaction's clock), so the dequeue order of a
     batch is not defined. Real deliveries arrive separately anyway, and a signal
     that depends on arrival order is a signal worth testing deliberately.
 

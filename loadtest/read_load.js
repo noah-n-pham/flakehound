@@ -5,7 +5,7 @@
 //   RATE=10 DURATION=30s BASE_URL=http://app:8000 k6 run read_load.js
 //
 // One iteration is **one dashboard page load, not one request**, because that is the
-// unit a user waits on. `frontend/src/app/page.tsx` issues six calls in two waves —
+// unit a user waits on. `frontend/src/app/page.tsx` issues six calls in two waves:
 // `/api/repos` first, because which repo to show comes out of it, then the board, the
 // job list and the minutes together, then the timeline and the duration trend, which
 // need the job name the board ranked worst. Firing six independent requests at a flat

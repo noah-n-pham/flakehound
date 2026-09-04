@@ -22,7 +22,7 @@ import {
 
 /**
  * The anti-drift route. Every primitive on this page is imported from
- * components/primitives.tsx — the same module the report renders from — so a
+ * components/primitives.tsx, the same module the report renders from, so a
  * component cannot exist in two versions. Extend this page rather than rebuild it.
  */
 export const metadata = { title: "styleguide" };
@@ -82,8 +82,8 @@ export default function StyleguidePage() {
           h3 20
         </Heading>
         <Body className="mt-8">
-          body 15 in Inter at line-height 1.6, muted. Paragraphs and labels only
-          — every number, timestamp, SHA, and uppercase label is mono instead.
+          body 15 in Inter at line-height 1.6, muted. Paragraphs and labels only.
+          Every number, timestamp, SHA, and uppercase label is mono instead.
         </Body>
         <p className="mt-4 text-[13px] text-text-muted">small 13</p>
         <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-text-faint">
@@ -158,7 +158,7 @@ export default function StyleguidePage() {
 
       <Section label="interval bar">
         <Body className="mb-8">
-          A 95% Wilson interval drawn on one shared scale — the faint span is the
+          A 95% Wilson interval drawn on one shared scale. The faint span is the
           interval, the bright tick is the rate itself. All three rows below are
           scaled to 40 points, so their widths mean the same thing: 3 flakes in 22
           runs is barely a narrower claim than 1 in 3, and 40 in 1,204 is a
@@ -212,7 +212,7 @@ export default function StyleguidePage() {
       <Section label="share bar">
         <Body className="mb-8">
           The same 88px track as the interval bar, with one magnitude from zero instead
-          of two ends and a point — a share has nothing to estimate, so the bar is the
+          of two ends and a point. A share has nothing to estimate, so the bar is the
           number. The scale is the largest share on the page, not 100%, or a table whose
           biggest slice is 12% would draw four bars all hugging the left edge.
         </Body>
@@ -260,7 +260,7 @@ export default function StyleguidePage() {
       <Section label="trend chart">
         <Body className="mb-8">
           Two per-day percentiles over a window, with no gridlines, no axis ticks and no
-          legend box — the scale is stated once above the plot and the ends of the x axis
+          legend box. The scale is stated once above the plot and the ends of the x axis
           are named. The gap in the middle is a day with no observation, drawn as a gap
           rather than bridged or read as zero. It is an inline SVG in a server component:
           thirty numbers that never change do not need a charting library in the browser.
@@ -294,8 +294,8 @@ export default function StyleguidePage() {
       <Section label="timeline">
         <Body className="mb-8">
           One job&apos;s history, oldest commit at the left. Each mark is an attempt
-          and each underlined group is a commit, so the third group below — a failure
-          beside a pass under one rule — is a re-run recovery, and the last is two
+          and each underlined group is a commit, so the third group below, a failure
+          beside a pass under one rule, is a re-run recovery, and the last is two
           runs disagreeing on the same commit. A pass is deliberately uncoloured: a
           strip of thirty green squares would say nothing thirty times.
         </Body>
@@ -379,7 +379,7 @@ export default function StyleguidePage() {
 
       <Section label="external link">
         {/* Two faces because the board uses both: sans in a sentence, mono wherever
-            the link text is an identifier. Both open in a new tab — a reader
+            the link text is an identifier. Both open in a new tab. A reader
             checking a claim on github.com should keep the page they were reading. */}
         <Body>
           Body copy pointing at{" "}
@@ -428,7 +428,7 @@ export default function StyleguidePage() {
 
       <Section label="motion">
         <Body>
-          150ms opacity fades and nothing else — no slides, no springs, no
+          150ms opacity fades and nothing else: no slides, no springs, no
           scroll-triggered animation. Hover the buttons above to see the whole
           motion system.
         </Body>
@@ -453,7 +453,7 @@ export default function StyleguidePage() {
           value="retry, no message"
           tone="muted"
         />
-        <LabelValueRow label="title template" value="%s — flakehound" />
+        <LabelValueRow label="title template" value="%s · flakehound" />
       </Section>
     </Page>
   );

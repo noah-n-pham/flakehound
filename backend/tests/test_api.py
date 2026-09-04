@@ -11,7 +11,7 @@ from tests.test_detection import RUN_ID, WORKFLOW_ID, attempt, run_event
 
 
 def auth() -> dict[str, str]:
-    """The internal bearer token alone — no authorized-repo set.
+    """The internal bearer token alone, with no authorized-repo set.
 
     Kept separate from `reader()` because "authenticated" and "authorized" are two
     different claims here, and `tests/test_authorization.py` needs to send the first

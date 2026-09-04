@@ -97,14 +97,9 @@ export default async function PublicBoardPage() {
       />
       <Body className="mt-8 max-w-[680px]">
         Ten jobs from public repositories, read out of the GitHub Actions history
-        those projects already publish, over the last {WINDOW_DAYS} days.{" "}
-        <strong className="font-normal text-text">
-          Appearing here is not adoption.
-        </strong>{" "}
-        None of these projects installed anything, sent us data, or asked to be
-        measured — they were selected against criteria fixed before the first
-        repository was read, and a flaky job says nothing about the people who
-        wrote it beyond that their CI is public.
+        those projects already publish, over the last {WINDOW_DAYS} days. A flaky
+        job says nothing about the people who wrote it beyond that their CI is
+        public.
       </Body>
       <Body className="mt-6 max-w-[680px]">
         Every row links to the repository and to the failing job run behind it, so
@@ -154,7 +149,7 @@ export default async function PublicBoardPage() {
           <Body className="max-w-[680px]">
             Nothing to rank yet. A repository reaches this board only after its
             history has been read and a signal has actually fired, so an empty
-            board means no public repository has flaked inside the window — not
+            board means no public repository has flaked inside the window, not
             that nothing was looked at.
           </Body>
         </Section>
@@ -162,8 +157,8 @@ export default async function PublicBoardPage() {
 
       <Section label="how the ranking works">
         <Body className="max-w-[680px]">
-          A flake is a job that failed and then passed with the commit unchanged —
-          either on a re-run, or against a sibling job on the same commit. The
+          A flake is a job that failed and then passed with the commit unchanged,
+          either on a re-run or against a sibling job on the same commit. The
           rate is flakes over opportunities, and the interval beside it is the
           95% Wilson score interval on that rate. Ranking uses the interval&apos;s
           lower bound rather than the rate, which matters more on a board that
@@ -175,7 +170,7 @@ export default async function PublicBoardPage() {
           The proving run is one of the job runs the row&apos;s own flake count was
           computed from, picked as the most recent failure rather than the worst
           one. A job name is only unique inside its workflow, so the workflow
-          column is part of the row&apos;s identity and not decoration — two rows
+          column is part of the row&apos;s identity and not decoration. Two rows
           naming the same job in the same repository are two different jobs.
         </Body>
       </Section>

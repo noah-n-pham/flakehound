@@ -3,10 +3,10 @@
 This single test is worth more than any architecture diagram: it exercises all
 three idempotency layers at once:
 
-* layer 1 — the delivery id is a primary key, so redelivery over HTTP enqueues nothing;
-* layer 2 — every fact write is an upsert on GitHub's own ids, so re-processing a payload
+* layer 1: the delivery id is a primary key, so redelivery over HTTP enqueues nothing;
+* layer 2: every fact write is an upsert on GitHub's own ids, so re-processing a payload
   converges instead of duplicating;
-* layer 3 — flake events are unique on the grouping key plus the signal, so re-deriving
+* layer 3: flake events are unique on the grouping key plus the signal, so re-deriving
   the same history cannot mint a second event.
 
 Receipt timestamps and attempt counters legitimately differ between one delivery and a
@@ -119,7 +119,7 @@ def full_delivery_set() -> list[dict]:
 
     Three attempts of one job, each announced queued, in progress, and completed, and a
     `workflow_run` trio per attempt. Every payload agrees with every other about the facts
-    it repeats — a fixture where two bodies disagree about one job's conclusion would make
+    it repeats. A fixture where two bodies disagree about one job's conclusion would make
     the convergence assertion meaningless rather than strict.
     """
     outcomes = (("failure", 14), ("failure", 14), ("success", 18))

@@ -9,7 +9,7 @@ halves of the dashboard cannot tell different stories about one job.
 The fixture history below is five commits of one matrix leg, one per shape the
 timeline has to draw: a clean pass, a re-run recovery inside one run, a plain
 failure, a commit nothing judgeable happened on, and two runs disagreeing on one
-commit. The job name carries spaces, a comma and parentheses on purpose — it is a
+commit. The job name carries spaces, a comma and parentheses on purpose. It is a
 path segment in the endpoint, and matrix names are stored whole.
 """
 
@@ -83,7 +83,7 @@ def job(
 
 
 async def seed_five_commits(session) -> None:
-    """Five commits of one job, oldest first — one per shape the timeline draws."""
+    """Five commits of one job, oldest first: one per shape the timeline draws."""
     await deliver(
         session,
         run(sha=SHA_CLEAN, run_id=RUN_CLEAN),

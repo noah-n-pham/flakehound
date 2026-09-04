@@ -29,8 +29,8 @@ env:
 
 jobs:
   # This workflow pushes an image and then waits. It does not deploy anything, and
-  # it holds no credential that could: the instance is unreachable from here —
-  # no inbound rule, and the deploy user is denied every SSM action — so the box
+  # it holds no credential that could: the instance is unreachable from here
+  # (no inbound rule, and the deploy user is denied every SSM action), so the box
   # polls ECR itself and restarts onto a digest it has not seen (D-053). What CI
   # can still do is refuse to go green until the commit it built is the one
   # answering in production, which is what the last step is for.
@@ -90,7 +90,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # A 200 from `/healthz` is not evidence of a deploy — the previous image
+      # A 200 from `/healthz` is not evidence of a deploy. The previous image
       # would answer it just as cheerfully. The version field is, because it comes
       # out of the image being waited for. The box polls every 60s and the
       # container takes another ~40s to migrate and bind, so most of this budget is

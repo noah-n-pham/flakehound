@@ -54,7 +54,7 @@ def create_app() -> FastAPI:
         """API latency, labelled by route template rather than path.
 
         The route is only on the scope once the router has matched, which is after
-        `call_next` — and on an unmatched path it never appears at all. Recording in a
+        `call_next`, and on an unmatched path it never appears at all. Recording in a
         `finally` means a request that raised still contributes the time it spent.
         """
         started = time.perf_counter()

@@ -5,7 +5,7 @@ answers "may we watch this one". Keeping them apart is what makes the admission 
 auditable: a search query that returned the wrong sort of repository shows up as a low
 admission rate rather than as a board full of junk.
 
-**Three star bands, because the brief asks for a balanced pool** — personal and
+**Three star bands, because the brief asks for a balanced pool**: personal and
 small-project repositories below 100 stars, lower-popularity ones from 100 to 300, and
 medium ones from 300 to 500. Stars are a *discovery aid only*: nothing in
 `observe.assess()` reads them, and a repository is admitted or refused on activity and
@@ -63,7 +63,7 @@ class Band:
 # efficiency** choice and not an eligibility rule: below it the results are
 # overwhelmingly repositories with no Actions at all, and screening each one costs three
 # requests to learn nothing. It cannot bias the board, because star count is invisible
-# to `assess()` — it only changes how many candidates are wasted.
+# to `assess()`. It only changes how many candidates are wasted.
 BANDS = (
     Band(name="small", low=5, high=99),
     Band(name="lower", low=100, high=299),
@@ -381,7 +381,7 @@ async def _main(per_band: int) -> None:
 
 
 def main() -> None:
-    """`python -m app.discover [--per-band 30]` — build the candidate pool.
+    """`python -m app.discover [--per-band 30]`: build the candidate pool.
 
     Writes only `repositories` rows. Crawling their history is a separate step, so an
     admission decision is never entangled with what a crawl found.

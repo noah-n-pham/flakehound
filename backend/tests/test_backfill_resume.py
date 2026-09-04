@@ -6,8 +6,8 @@ each has a test that isolates it: the cursor lives on the repository row rather
 than in the queue payload, and a page advances the cursor in the same
 transaction that completes its queue row.
 
-The interruption is the real one — `claim_batch` takes the rows and nothing ever
-processes them, which is exactly what a killed worker leaves behind — and the
+The interruption is the real one: `claim_batch` takes the rows and nothing ever
+processes them, which is exactly what a killed worker leaves behind, and the
 reaper is what brings them back.
 """
 
@@ -33,7 +33,7 @@ from tests.test_backfill import (
     FULL_NAME,
     REPO_ID,
     TOKEN_URL,
-    keypair,  # noqa: F401 — a fixture, used by name
+    keypair,  # noqa: F401  # a fixture, used by name
     seed_repo,
 )
 from tests.test_replay_100x import drain, snapshot
@@ -51,7 +51,7 @@ def history(today) -> list[dict]:
     """Six runs over seven days: two pages in one window, a re-run in another.
 
     Sized against the test settings (7 days of history, 3-day windows, 2 results
-    a page) so an interrupt has somewhere to land — three windows, one of which
+    a page) so an interrupt has somewhere to land: three windows, one of which
     needs a second page, and a run with two attempts so a flake event exists to
     be compared.
     """
@@ -107,7 +107,7 @@ def jobs_for(run_id: int, attempt: int, attempts: int) -> list[dict]:
 
 
 @pytest.fixture
-def fake_github(monkeypatch, keypair):  # noqa: F811 — the imported fixture
+def fake_github(monkeypatch, keypair):  # noqa: F811  # the imported fixture
     monkeypatch.setenv("GITHUB_APP_ID", "4792446")
     monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", keypair)
     monkeypatch.setenv("BACKFILL_DAYS", "7")
@@ -227,7 +227,7 @@ async def run_ids(session) -> list[int]:
 
 # `backfill_completed_at` records when a crawl finished, so two crawls differ by
 # construction. It is the only column this comparison drops beyond the replay
-# test's receipts — everything else, cursor state included, must match exactly.
+# test's receipts. Everything else, cursor state included, must match exactly.
 CRAWL_RECEIPTS = frozenset({"backfill_completed_at"})
 
 
@@ -313,8 +313,8 @@ async def test_a_crawl_interrupted_after_every_single_row_still_converges(
     """The pathological case: every row is claimed, abandoned, reaped, redone.
 
     Once each, not repeatedly. `claim_batch` counts the attempt, so a row
-    abandoned `max_attempts` times stops being claimable and is dead-lettered —
-    that is the queue working as designed, not a resume bug. The assertion that
+    abandoned `max_attempts` times stops being claimable and is dead-lettered.
+    That is the queue working as designed, not a resume bug. The assertion that
     nothing reached `failed` is what keeps this test honest about the difference.
     """
     await seed_repo(db_session)
@@ -350,12 +350,12 @@ async def test_the_cursor_resumes_the_crawl_even_when_the_queue_is_lost(
 
     The queue row is a wake-up call, not the state. Throwing away the crawl's
     row mid-window and inserting a bare replacement must pick up exactly where
-    the repository row says it got to — no earlier, which would redo a window,
+    the repository row says it got to: no earlier, which would redo a window,
     and no later, which would lose one.
 
     Only the `backfill_runs` rows are discarded. The cursor tracks the runs
     crawl and nothing else, so a pending `backfill_jobs` row is the only record
-    that an attempt's jobs are still owed — see the note in STATE.md Invariants.
+    that an attempt's jobs are still owed. See the note in STATE.md Invariants.
     """
     await seed_repo(db_session)
     await clear(db_session)
@@ -390,7 +390,7 @@ async def test_an_interruption_at_the_claim_boundary_costs_no_extra_requests(
 ):
     """What resuming costs, measured rather than assumed.
 
-    I expected a stranded row to cost a repeated request, and it does not — the
+    I expected a stranded row to cost a repeated request, and it does not. The
     counts come out equal. That is the claim-before-work ordering paying off: a
     row is `processing` before any HTTP happens, and the call, the writes, the
     cursor and the completion all commit together. So a worker killed while
@@ -463,14 +463,14 @@ async def test_a_worker_killed_inside_a_page_loses_none_of_it(
 
     A page that fails halfway must take its cursor advance down with it. If the
     cursor were durable while the page's runs were not, the retry would start
-    from the *next* page and those runs would never be fetched by anything — a
+    from the *next* page and those runs would never be fetched by anything: a
     silent gap, which is exactly what this criterion forbids.
 
     Two fault points, because they are not the same test. A failure in the HTTP
     call happens before the cursor is touched at all, so it proves the retry
     converges but says nothing about ordering. A failure while *writing* the
     page lands in the window between advancing the cursor and recording the
-    runs — the window that only exists if those two are not one transaction.
+    runs: the window that only exists if those two are not one transaction.
     """
     monkeypatch.setenv("RETRY_BACKOFF_SECONDS", "0")
     get_settings.cache_clear()
@@ -495,7 +495,7 @@ async def test_a_worker_killed_inside_a_page_loses_none_of_it(
     fired = {"yes": False}
     if fault == "the http call":
         # Counted from here, not from the baseline crawl's requests. The second
-        # runs request is page 2 of the first window — mid-crawl, with a page
+        # runs request is page 2 of the first window, mid-crawl, with a page
         # recorded behind it and two windows still to come.
         fake_github.calls_made.clear()
         fake_github.fail_at["call"] = 2

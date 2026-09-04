@@ -202,7 +202,7 @@ def test_a_payload_missing_its_flags_is_read_as_private_rather_than_public():
     """The safe default when GitHub says nothing: assume the stricter answer.
 
     `upsert_repository` already defaults `private` to True for the same reason, and
-    the two must not disagree — a repo read as public by mistake is the one mistake
+    the two must not disagree. A repo read as public by mistake is the one mistake
     this whole direction cannot make.
     """
     assembled = facts_from_payloads({"id": 1, "full_name": "a/b"}, {}, {})

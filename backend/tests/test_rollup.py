@@ -1,8 +1,8 @@
 """The daily rollup: what it counts, that it converges, and that it agrees with the facts.
 
 The strongest test here is `test_the_rollup_agrees_with_the_raw_facts`, which computes
-the leaderboard twice — once by summing `job_stats_daily` and once straight from the
-job rows — and asserts the two are identical. Everything else in this file pins a
+the leaderboard twice (once by summing `job_stats_daily` and once straight from the
+job rows) and asserts the two are identical. Everything else in this file pins a
 specific property of the recompute; that one asks whether the aggregate is the same
 claim as the facts it summarises.
 """
@@ -26,7 +26,7 @@ NOW = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
 
 async def rows(session) -> list[JobStatsDaily]:
     # The rollup writes through Core statements, so anything the identity map is
-    # holding is a stale copy until it is expired — the same trap the queue tests hit.
+    # holding is a stale copy until it is expired, the same trap the queue tests hit.
     session.expire_all()
     result = await session.execute(
         select(JobStatsDaily).order_by(
@@ -284,7 +284,7 @@ async def test_the_rollup_agrees_with_the_raw_facts(db_session):
     """The leaderboard summed from days equals the leaderboard scanned from jobs.
 
     Two signals, two workflows, two runs on one commit, a cancelled run and an
-    unfinished one — the awkward cases in one dataset, so the agreement is not a
+    unfinished one: the awkward cases in one dataset, so the agreement is not a
     coincidence of a trivial fixture.
     """
     await deliver(
@@ -312,8 +312,8 @@ async def test_the_rollup_agrees_with_the_raw_facts(db_session):
 
     assert comparable(from_rollup) == comparable(from_facts)
     assert [job.interval for job in from_rollup] == [job.interval for job in from_facts]
-    # `last_flake_at` is the one value the two derive differently — the rollup takes the
-    # implicated run's own completion, the oracle the event's occurrence — so the claim
+    # `last_flake_at` is the one value the two derive differently (the rollup takes the
+    # implicated run's own completion, the oracle the event's occurrence), so the claim
     # is that they agree about *whether* a job has ever flaked.
     assert [job.last_flake_at is None for job in from_rollup] == [
         job.last_flake_at is None for job in from_facts

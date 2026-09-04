@@ -186,7 +186,7 @@ async def test_a_late_job_event_does_not_revive_a_removed_repo(db_session):
     )
 
     assert (await _repo(db_session)).active is False
-    # The event was still processed — the facts are recorded, the repo is just
+    # The event was still processed. The facts are recorded, the repo is just
     # no longer watched.
     assert (await db_session.execute(select(func.count()).select_from(Job))).scalar_one() == 1
 

@@ -1,7 +1,7 @@
 # flakehound
 
 Detects flaky CI in GitHub Actions from the history you already have. One-click
-install as a GitHub App — no workflow file changes, no test-suite instrumentation,
+install as a GitHub App: no workflow file changes, no test-suite instrumentation,
 nothing uploaded from inside a test job.
 
 Flakiness is measured at the **job** level, from the Actions API alone. A flake is a
@@ -35,7 +35,7 @@ pip install -e '.[dev]'
 pytest
 ```
 
-Tests run against the Postgres in `docker-compose.yml` — never sqlite, never a
+Tests run against the Postgres in `docker-compose.yml`, never sqlite, never a
 mocked database. The suite creates and migrates a `flakehound_test` database of
 its own, so the development database is left alone.
 
@@ -47,7 +47,7 @@ cd backend && alembic upgrade head
 
 ## The container
 
-One image runs all three processes — the API, the worker, and `cloudflared` —
+One image runs all three processes (the API, the worker, and `cloudflared`)
 under a shell entrypoint that migrates first and exits if any of them dies.
 
 ```bash
@@ -69,7 +69,7 @@ npm install
 npm run dev:local     # reads ../.env, so the internal token lives in one file
 ```
 
-`dev:local` points the BFF at whatever `API_BASE_URL` says — the deployed API by
+`dev:local` points the BFF at whatever `API_BASE_URL` says: the deployed API by
 default, so the page shows production data without running anything locally.
 `/styleguide` renders every design primitive the app uses; add a component there
 before using it anywhere else.

@@ -1,8 +1,8 @@
-"""Operational readouts. Token-gated — "internal" is a name, not a boundary.
+"""Operational readouts. Token-gated. "internal" is a name, not a boundary.
 
 The tunnel routes the whole hostname, so `/internal/metrics` is exactly as reachable
-from the internet as `/api` is. Exactly three paths are unauthenticated —
-`/healthz`, `/public/flaky`, and the webhook — because queue depth, installation
+from the internet as `/api` is. Exactly three paths are unauthenticated
+(`/healthz`, `/public/flaky`, and the webhook) because queue depth, installation
 counts, and rate-limit headroom are not for strangers.
 """
 
@@ -47,7 +47,7 @@ async def metrics(session: SessionDep) -> MetricsResponse:
     """The newest point of every series still reporting.
 
     Each point carries its own timestamp because two processes write these counters on
-    independent timers — the worker the database-derived ones, the API its own — and a
+    independent timers (the worker the database-derived ones, the API its own), and a
     single response-level age would hide one of them falling behind. That is the most
     useful thing this endpoint can say: not the numbers, but which writer has stopped.
     """
@@ -74,7 +74,7 @@ async def metrics(session: SessionDep) -> MetricsResponse:
 #
 # The instance takes no inbound connection and there is no shell on it, so this is the
 # only way the build drives the observational crawl now that `aws ecs run-task` is
-# gone. Two operations and one readout, all named and typed — nothing here takes a
+# gone. Two operations and one readout, all named and typed. Nothing here takes a
 # query, a command, or anything else that would make it a remote shell.
 # --------------------------------------------------------------------------- #
 
@@ -91,7 +91,7 @@ class CorpusResponse(BaseModel):
 async def corpus(session: SessionDep) -> CorpusResponse:
     """The counts Section I is measured against, straight out of SQL.
 
-    `observed["done"]` is the corpus size — repositories whose crawl finished. Not
+    `observed["done"]` is the corpus size: repositories whose crawl finished. Not
     admitted, not installed, and never rounded.
     """
     counts = await corpus_counts(session)
@@ -107,7 +107,7 @@ class CrawlRequest(BaseModel):
 
     The roadmap says to enqueue in bounded tranches and never to dump the whole pool
     on the queue at once. A ceiling in the request model is that rule where it cannot
-    be forgotten — the alternative was a sentence in a document and a careful operator.
+    be forgotten. The alternative was a sentence in a document and a careful operator.
     """
 
     limit: int = Field(default=20, ge=1, le=100)

@@ -3,7 +3,7 @@
 There is no shell on the instance and nothing may dial in, so this token-gated surface
 is the only way the build drives the observational crawl. Two properties matter more
 than the endpoints themselves: it must be *bounded*, because the roadmap forbids
-dumping the pool onto the queue in one go, and it must be *narrow* — a named operation
+dumping the pool onto the queue in one go, and it must be *narrow*: a named operation
 with typed arguments, never a query or a command, because it is reachable from the
 internet with a bearer token.
 """
@@ -207,7 +207,7 @@ async def test_an_operator_command_never_overtakes_a_live_delivery(client, db_se
     """Same priority tier as live, so the tiebreak is age and the webhook is older.
 
     Claiming one row at a time, because `claim_batch` only promises which rows a batch
-    selects — the order they come back in is the UPDATE's, not the ORDER BY's.
+    selects. The order they come back in is the UPDATE's, not the ORDER BY's.
     """
     db_session.add(EventQueue(job_type="webhook", event="workflow_job", payload={}))
     await db_session.flush()

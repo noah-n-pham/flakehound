@@ -1,8 +1,8 @@
 /**
  * github.com URLs, built in one place.
  *
- * The API deliberately sends identifiers rather than links — a repo full name, a run
- * id, a job id — so the shape of a github.com URL is presentation and lives here. One
+ * The API deliberately sends identifiers rather than links (a repo full name, a run
+ * id, a job id), so the shape of a github.com URL is presentation and lives here. One
  * module because the public board makes a claim about a repository whose owner never
  * asked to be measured: a link that 404s is worse than no link, and two copies of this
  * pattern would eventually disagree about which one is right.

@@ -5,7 +5,7 @@ Real numbers from real runs. Every figure here was produced by a command in
 estimated.
 
 **Measured so far:** scenario 1, webhook ingest throughput, and scenario 2, dashboard
-read load — both against the container.
+read load, both against the container.
 **Not yet measured:** the tunnel smoke test and the chaos pass.
 
 ---
@@ -16,7 +16,7 @@ Everything below ran on one Apple-silicon laptop: k6, uvicorn, the worker and
 Postgres 16 all inside Docker Desktop's VM, **8 CPUs and 8.2 GB between them**.
 The load generator was co-located with the target, so it competed for those CPUs.
 
-The production task is **256 CPU units — a quarter of one vCPU — and 512 MB**. It
+The production task is **256 CPU units (a quarter of one vCPU) and 512 MB**. It
 is roughly a thirtieth of the compute these numbers were measured on, so **none of
 them transfers to production as-is.** They characterise the software: where its
 ceiling comes from, what shape it fails in, and how much room there is above the
@@ -31,7 +31,7 @@ no number here is ambiguous about which path it crossed.
 
 ---
 
-## Scenario 1 — webhook ingest throughput
+## Scenario 1: webhook ingest throughput
 
 ### Method
 
@@ -40,8 +40,8 @@ seconds each, after a discarded 5-second warm-up. k6 runs in a container on the
 compose network and posts to `http://app:8000`, so there is no host port
 forwarding in the path.
 
-Each iteration posts a `workflow_job` body of **2,520 bytes** — ten steps, shaped
-like the real thing, because the body is what gets HMAC'd and JSON-parsed — signed
+Each iteration posts a `workflow_job` body of **2,520 bytes** (ten steps, shaped
+like the real thing, because the body is what gets HMAC'd and JSON-parsed), signed
 per iteration with HMAC-SHA256 and carrying a **unique `X-GitHub-Delivery`**. That
 last detail is load-bearing: the deliveries table's primary key *is* the dedup
 mechanism, so a flood of one delivery id would measure one insert and N−1 conflicts.
@@ -53,7 +53,7 @@ latency quietly lower the offered rate, which is the number being measured.
 
 The database was not empty. It began the run holding **146,172 deliveries and
 30,458 job rows**, with the queue fully drained. The worker ran throughout, as it
-does in production — one container, three processes.
+does in production: one container, three processes.
 
 ### Results
 
@@ -71,7 +71,7 @@ pending when the plateau ended.
 
 Then, with the load stopped, the worker drained the backlog it had been left:
 
-**18,102 queue rows in 201 seconds — 90 rows/second.**
+**18,102 queue rows in 201 seconds: 90 rows/second.**
 
 Over the whole run, deliveries rose by 30,385 and job rows rose by **30,385**. One
 delivery, one fact, no drift, and nothing lost.
@@ -81,12 +81,12 @@ delivery, one fact, no drift, and nothing lost.
 **Sustained ingest is 90/s, and the limit is the worker, not the endpoint.** The
 API accepts far more than the worker can drain, so "sustained" is set by the drain
 rate: 90 rows/second, measured directly. At 50/s the queue ends a 30-second
-plateau 17 rows deep — the worker keeps up. At 100/s it ends 549 deep, which is
+plateau 17 rows deep. The worker keeps up. At 100/s it ends 549 deep, which is
 the queue growing at ~18/s and the drain running at ~82/s under ingest pressure.
 Everything above that is a backlog, not a throughput.
 
 **The endpoint's own ceiling is ~370/s.** Offering 400 got 370 accepted; offering
-800 got *less* — 266 — which is the signature of a saturated service rather than a
+800 got *less* (266), which is the signature of a saturated service rather than a
 faster one. Somewhere between 400 and 800 offered, more load buys less work.
 
 **p99 at the sustainable rate is 411–845 ms, and p50 is 4 ms.** The median is what
@@ -97,7 +97,7 @@ part of this whole run.
 **It breaks by waiting, never by failing.** Zero HTTP errors at every plateau,
 including the one offering 800/s at a service that could take 266. Nothing was
 rejected, nothing 500'd, no delivery was accepted and then lost. Requests queued
-and the queue grew. For a webhook consumer that is the right failure mode —
+and the queue grew. For a webhook consumer that is the right failure mode:
 GitHub retries a 5xx and gives up eventually, but a slow 202 still ends with the
 delivery recorded.
 
@@ -118,22 +118,22 @@ Too small and too rare to be a p99 of 1.5 s. The guess was wrong, which is why i
 was measured before being written down.
 
 **The prime suspect is connection-pool queueing.** The API's engine allows
-`pool_size=5` plus `max_overflow=5` — **ten connections** — with `pool_pre_ping`
+`pool_size=5` plus `max_overflow=5` (**ten connections**) with `pool_pre_ping`
 adding a round trip before each checkout. A request that finds a free connection
 commits in 4 ms; one that arrives with all ten busy waits for one, and at 200/s
-k6 has hundreds of requests in flight. That shape — flat median, heavy tail,
-no errors — is what a small pool behind a large arrival burst looks like.
+k6 has hundreds of requests in flight. That shape (flat median, heavy tail,
+no errors) is what a small pool behind a large arrival burst looks like.
 
 **This is a hypothesis with a cheap test, and the test has not been run.** Raise
 the pool, re-run the same ladder, and see whether the ceiling moves or the tail
 flattens. Until then it is written here as a suspect and not as a cause.
 
-Scenario 2 narrowed it without settling it — see "Where the time actually goes"
+Scenario 2 narrowed it without settling it. See "Where the time actually goes"
 below. The API process is exonerated; the pool and Postgres are not separated.
 
 ---
 
-## Scenario 2 — dashboard read load
+## Scenario 2: dashboard read load
 
 ### Method
 
@@ -152,7 +152,7 @@ is the sum of the waves. **So the rate below is pages per second and the request
 rate is seven times it.**
 
 Every request carries the internal bearer token and an `X-Authorized-Repo-Ids`
-header, because without them `/api` answers 401 and 400 respectively — and a run of
+header, because without them `/api` answers 401 and 400 respectively, and a run of
 those would report a flattering number for a service that answered nothing. `setup()`
 asserts once, up front, that all seven paths return 200 and non-empty bodies.
 
@@ -175,7 +175,7 @@ whole six-call page load as the BFF would see it; the rest are per-endpoint p99s
 | 80 | 211.3 | 1,188 | 13,723 | 24,233 | 27,255 | 0 |
 
 **The last two rows are one sample each of a plateau that does not repeat.** Six
-later runs of the 40 row, below, spread from 157 to 215 req/s — ±30% — so read them
+later runs of the 40 row, below, spread from 157 to 215 req/s (±30%), so read them
 as "it is saturated and degrading" and not as numbers. Everything at 20 and below
 reproduced within a few percent.
 
@@ -194,13 +194,13 @@ the tail breaks (20 pages/s):
 
 ### What the numbers say
 
-**Sustained read load is 10 page loads/second — 70 requests/second — at a page p99
+**Sustained read load is 10 page loads/second (70 requests/second) at a page p99
 of 196 ms.** Below that the median is flat at ~85 ms and the tail stays under a
 quarter second. The service answers a whole dashboard in under 200 ms, 99 times in
 100, while serving seventy requests a second.
 
 **It breaks between 10 and 20 pages/s, and it breaks in the tail first.** At 20 the
-median is still 90 ms — indistinguishable from the idle case — while the p95 jumps
+median is still 90 ms (indistinguishable from the idle case) while the p95 jumps
 from 114 ms to 2,133 ms. Half the page loads are unaffected and the other half wait
 seconds. At 40 the median itself goes to 2.3 s, which is the saturation point. At 80
 achieved throughput *falls*, 252 req/s down to 211, the same "more load buys less
@@ -213,7 +213,7 @@ at a service that could deliver 30. Reads degrade by waiting, exactly as ingest 
 median against 10–50 ms for the three that touch raw job rows. `/public/flaky`, the
 only one with no auth in front of it, is the cheapest thing here at 2.6 ms.
 
-**The low plateaus have noisy p99s and the 5 pages/s row is the tell** — 547 ms,
+**The low plateaus have noisy p99s and the 5 pages/s row is the tell**: 547 ms,
 worse than the 10 pages/s row's 196 ms. 151 page loads is a sample where the p99 is
 roughly the second-worst observation, so one rollup sweep landing inside the window
 moves it. The monotonic part of the curve starts at 10.
@@ -223,13 +223,13 @@ moves it. The monotonic part of the curve starts at 10.
 **Every raw-fact read is a sequential scan of the whole repo's job rows.** `EXPLAIN
 ANALYZE` on the three, against 60,822 rows:
 
-- `/api/repos/{id}/jobs` — `Parallel Seq Scan on jobs`, 60,822 rows read to return
+- `/api/repos/{id}/jobs`: `Parallel Seq Scan on jobs`, 60,822 rows read to return
   50, `top-N heapsort`, 45 ms. `jobs` has indexes for the two detection signals and
   one on `updated_at`; **nothing supports `(repo_id, started_at desc)`**.
-- the timeline's commit-picking subquery — `Seq Scan` then `HashAggregate` over
+- the timeline's commit-picking subquery: `Seq Scan` then `HashAggregate` over
   **60,326 groups, which spills: `Batches: 5 … Disk Usage: 752kB`**, 104 ms. It
   groups every commit in the window to take the newest 30.
-- `/api/repos` — `Nested Loop Left Join` over all 60,822 rows to produce one count,
+- `/api/repos`: `Nested Loop Left Join` over all 60,822 rows to produce one count,
   25 ms.
 
 So these three are **O(the repo's job rows), not O(the page size)**, and the constant
@@ -237,8 +237,8 @@ is small enough to hide at 60k rows. SPEC sizes this at ~2M rows in 90 days, whi
 thirty times the row count these numbers came from.
 
 **The API process is not the bottleneck.** Sampled during a 20 pages/s plateau, when
-DB-backed p99s were 0.8–1.7 s, `/healthz` — which touches no database and checks out
-no connection — answered in **2.5 ms to 92 ms**, median ~35 ms. An event loop that
+DB-backed p99s were 0.8–1.7 s, `/healthz` (which touches no database and checks out
+no connection) answered in **2.5 ms to 92 ms**, median ~35 ms. An event loop that
 was itself saturated would have delayed it too. Over the same window `docker stats`
 read the app container at **45–110% CPU** and Postgres at **149–337%**: the database
 is burning three cores to the app's one.
@@ -249,18 +249,18 @@ pooled connections" and "waiting for a Postgres that is genuinely busy" both fit
 and at 337% CPU on sequential scans the second is now at least as plausible as the
 first. **The experiment that separates them is to add the missing index and re-run
 this ladder unchanged**: if the ceiling moves, it was the work; if only the tail
-flattens, it was the queue. That experiment was run — see below — and neither
+flattens, it was the queue. That experiment was run (see below) and neither
 happened, for a reason the design of the experiment had missed.
 
 ### What this means for production
 
-Nothing here transfers as a rate — see the box at the top; this ran on 8 CPUs and the
+Nothing here transfers as a rate. See the box at the top; this ran on 8 CPUs and the
 task has a quarter of one. What transfers is the shape: **the read path's cost grows
 with the repo's history on three endpoints and stays flat on four**, and the four
 flat ones are the rollup's. That is the argument for the rollup restated as a
 measurement rather than a design claim.
 
-### Scenario 2a — the same ladder, with the missing index
+### Scenario 2a: the same ladder, with the missing index
 
 `ix_jobs_repo_recent` on `jobs (repo_id, started_at DESC NULLS LAST, id DESC)`,
 migration `b8e5309fa14c`. The ordering is spelled out because a b-tree only satisfies
@@ -271,7 +271,7 @@ asks for NULLS LAST. Nothing else changed, and the ladder was re-run unmodified.
 
 | | before | after |
 |---|---|---|
-| the query alone, `EXPLAIN ANALYZE` | 45.4 ms, `Parallel Seq Scan`, 60,822 rows read to return 50 | **1.3 ms**, `Index Scan`, 50 rows read — 0.20 ms once its pages are cached |
+| the query alone, `EXPLAIN ANALYZE` | 45.4 ms, `Parallel Seq Scan`, 60,822 rows read to return 50 | **1.3 ms**, `Index Scan`, 50 rows read: 0.20 ms once its pages are cached |
 | `/api/repos/{id}/jobs` p50 in a loaded page, 10 pages/s | 14.1 ms | 7.7 ms |
 | `/api/repos/{id}/jobs` p99, 10 pages/s | 69.9 ms | 58.8 ms |
 | page p99, 10 pages/s | 196 ms | 217 ms |
@@ -282,7 +282,7 @@ asks for NULLS LAST. Nothing else changed, and the ladder was re-run unmodified.
 **A 35× faster query bought a 2× faster endpoint and a 0× faster page.** That gap is
 the finding. In isolation the scan was 45 ms of the endpoint's cost; inside a page at
 70 req/s the endpoint only fell from 14.1 ms to 7.7 ms, because most of what it was
-spending was never the query. The ceiling is where it was — still sustainable at 10
+spending was never the query. The ceiling is where it was: still sustainable at 10
 page loads/s, still breaking in the tail between 10 and 20.
 
 ### Why this could not settle the pool question, which is the useful part
@@ -297,7 +297,7 @@ supposed to tell apart.
 
 What still points at the pool is a detail in scenario 2's own per-endpoint table.
 **At saturation all seven endpoints converge on the same latency.** At 40 pages/s
-before the index they read 403, 510, 523, 517, 544, 509 and 502 ms — including
+before the index they read 403, 510, 523, 517, 544, 509 and 502 ms, including
 `/public/flaky`, which costs 2.6 ms when idle and reads a five-row table. A fixed
 delay applied equally to a 2.6 ms query and a 55 ms one is a queue in front of the
 work, not the work. A merely busy Postgres would still return the cheap query
@@ -310,7 +310,7 @@ unlike an index it cannot be confounded by which queries happen to be in the mix
 ### The saturated plateaus are not a measurement, and here is the proof
 
 The first re-run appeared to show throughput at 40 pages/s falling from 252 to 182
-req/s — a 28% regression from adding an index, which is not a thing an index does. So
+req/s, a 28% regression from adding an index, which is not a thing an index does. So
 the plateau was run six times, dropping and restoring the index around the middle
 pair, rather than published:
 
@@ -368,7 +368,7 @@ Both harnesses read their credential out of `.env` into the environment and hand
 docker the variable's *name*, so no secret reaches a command line: the webhook
 ladder needs `GITHUB_WEBHOOK_SECRET` because it signs every request, and the read
 ladder needs `INTERNAL_API_TOKEN` because `/api` answers 401 without it. They point
-at whatever database compose is pointing at — **never run either against production.**
+at whatever database compose is pointing at. **Never run either against production.**
 
 Two things it took a wrong measurement to learn, both now fixed in the harness and
 worth knowing before trusting a run:

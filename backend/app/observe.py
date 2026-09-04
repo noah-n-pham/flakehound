@@ -7,7 +7,7 @@ this module and neither is negotiable.
 **Admission is decided from public metadata alone, before anything is crawled.** The
 facts in `CandidateFacts` are the whole input: what GitHub says about the repository,
 how many completed runs it has, and what triggered them. No flake rate, no job
-outcome, and nothing a crawl produced can appear there — which is what stops the board
+outcome, and nothing a crawl produced can appear there, which is what stops the board
 from being a list of repositories chosen *because* a preliminary crawl found them
 flaky. That selection effect would be invisible in the finished page and would make
 every number on it meaningless, so the defence against it is structural: the function
@@ -64,7 +64,7 @@ class CandidateFacts:
     """Public metadata about one repository. **Deliberately contains no outcomes.**
 
     `stargazers_count` is carried because stars are how candidates are *discovered*
-    across the three popularity bands — never because they make a repository eligible.
+    across the three popularity bands, never because they make a repository eligible.
     Nothing in `assess()` reads it.
     """
 
@@ -85,7 +85,7 @@ class CandidateFacts:
 
 @dataclass(frozen=True)
 class Verdict:
-    """Eligible, or every reason it is not — not merely the first one.
+    """Eligible, or every reason it is not: not merely the first one.
 
     All the reasons, because a discovery pass that prints "stale" and stops teaches
     less than one that says "stale, no workflows, 3 runs", and because a criterion
@@ -168,7 +168,7 @@ def facts_from_payloads(
             if workflow.get("state") == "active"
         ),
         # The listing's own total, which is the count in the window rather than the
-        # page length — the page is capped at 100 and the threshold is well below it.
+        # page length. The page is capped at 100 and the threshold is well below it.
         completed_runs=int(runs.get("total_count") or 0),
         code_triggered_runs=sum(1 for run in listed if run.get("event") in CODE_EVENTS),
     )
@@ -183,7 +183,7 @@ async def fetch_candidate_facts(
     """The three reads that admission needs. None when the repo is gone or private.
 
     Every call goes through `api_request`, so the observation identity's token buys
-    them and its bucket paces them — the same limiter the installed backfill uses,
+    them and its bucket paces them: the same limiter the installed backfill uses,
     which is why a crawl must never outrank real work (D-046).
 
     A 404 is the ordinary answer for a renamed, deleted, or newly-private repository,
@@ -287,7 +287,7 @@ async def _main(full_names: list[str]) -> None:
 
 
 def main() -> None:
-    """`python -m app.observe owner/repo [owner/repo ...]` — screen, decide nothing else.
+    """`python -m app.observe owner/repo [owner/repo ...]`: screen, decide nothing else.
 
     Read-only and writes no rows: screening is a judgement about public metadata, and
     keeping it separate from the crawl is what makes the admission list auditable.

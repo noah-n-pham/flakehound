@@ -34,7 +34,7 @@ RUNS_URL = f"https://api.github.com/repos/{FULL_NAME}/actions/runs"
 
 
 # --------------------------------------------------------------------------- #
-# The window walk — pure, so it is tested without a database or a network
+# The window walk: pure, so it is tested without a database or a network
 # --------------------------------------------------------------------------- #
 
 
@@ -87,7 +87,7 @@ def test_halving_keeps_the_newest_half_and_leaves_no_gap_behind_it():
     """A narrowed window must hand the days it gave up to the next window.
 
     Narrowing moves `start` forward and never touches `end`, and the next
-    window's `end` is derived from this one's `start` minus a day — so the two
+    window's `end` is derived from this one's `start` minus a day, so the two
     still meet whatever the halving did.
     """
     window = Window(start=date(2026, 8, 27), end=date(2026, 9, 2))
@@ -139,7 +139,7 @@ def github(monkeypatch, keypair):
     """Credentials plus a mocked token exchange, and small backfill numbers.
 
     A 7-day history in 3-day windows with 2 results a page exercises every
-    branch — more than one page, more than one window, and the floor — in a
+    branch (more than one page, more than one window, and the floor) in a
     handful of requests.
     """
     monkeypatch.setenv("GITHUB_APP_ID", "4792446")
@@ -229,7 +229,7 @@ async def advance(session) -> None:
     """One turn of the crawl, the way the worker takes it.
 
     The queued row is completed before its handler runs, because that is what
-    `run_once` does — claim, then handle. Without it every assertion about what
+    `run_once` does: claim, then handle. Without it every assertion about what
     the crawl queued next would also be counting the row it was given.
     """
     await session.execute(
@@ -285,7 +285,7 @@ async def test_a_second_start_does_not_queue_a_second_crawl(db_session, github):
 
 async def test_a_page_records_its_runs_and_queues_every_attempts_jobs(db_session, github):
     """The listing describes only the latest attempt, and Signal A lives in the
-    earlier ones — so a run on attempt 3 owes three jobs fetches, not one."""
+    earlier ones, so a run on attempt 3 owes three jobs fetches, not one."""
     await seed_repo(db_session)
     await start_backfill(db_session, repo_id=REPO_ID)
     await db_session.flush()
@@ -437,7 +437,7 @@ async def test_an_earlier_attempts_jobs_are_stored_against_a_stubbed_run(db_sess
 async def test_backfilled_attempts_produce_a_flake_event(db_session, github):
     """The point of the whole section: history we never saw becomes detection.
 
-    Attempt 1 fails, attempt 2 passes, same run — Signal A, derived from the API
+    Attempt 1 fails, attempt 2 passes, same run: Signal A, derived from the API
     rather than from a webhook.
     """
     await seed_repo(db_session)

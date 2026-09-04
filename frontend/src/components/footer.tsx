@@ -2,7 +2,7 @@ import { MetaStrip, Rule } from "@/components/primitives";
 
 /**
  * The bottom of the shell: a hairline, then the same dot-separated mono strip that
- * sits under a statistic elsewhere — here describing how the whole system works
+ * sits under a statistic elsewhere, here describing how the whole system works
  * rather than one number.
  *
  * Every claim on it is true and checkable, which is the point: this is the place a

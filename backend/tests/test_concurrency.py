@@ -100,8 +100,8 @@ async def test_four_workers_process_every_row_exactly_once(committing_sessions):
 async def test_a_claim_without_skip_locked_blocks_instead(committing_sessions):
     """Why the clause is there, rather than that the outcome is nice.
 
-    The same claim written without SKIP LOCKED does not return an empty batch —
-    it waits for the other worker's transaction, which at one row means the
+    The same claim written without SKIP LOCKED does not return an empty batch.
+    It waits for the other worker's transaction, which at one row means the
     second worker stalls behind the first for as long as the first is working.
     """
     async with committing_sessions() as setup:

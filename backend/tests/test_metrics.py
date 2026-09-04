@@ -212,7 +212,7 @@ async def test_an_installation_nobody_has_called_has_no_headroom_series(db_sessi
 
 async def test_no_two_series_share_a_name_and_labels(db_session):
     """The snapshot upserts a whole minute in one statement, and Postgres refuses to let
-    one statement touch a row twice — so a collision here is a runtime error, not a
+    one statement touch a row twice, so a collision here is a runtime error, not a
     duplicate row."""
     await deliver(db_session, attempt(1, "success"))
 

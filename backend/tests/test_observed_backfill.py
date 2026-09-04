@@ -2,7 +2,7 @@
 
 The whole point of this slice was that nothing about the crawl is new machinery: the
 same windowed walk, the same cursor on the repository row, the same handlers. Three
-things do differ, and all three are asserted here — where the request's identity comes
+things do differ, and all three are asserted here: where the request's identity comes
 from when there is no installation, that the work sits *below* a real user's history in
 the queue, and that it walks the board's window rather than the full ninety days.
 """
@@ -92,7 +92,7 @@ async def test_an_installed_repo_uses_its_own_installation(db_session, observati
 
 
 async def test_a_missing_observation_identity_raises_by_name(db_session, monkeypatch):
-    """Anonymous requests would work at 60/hour instead of 5,000 — so the failure has
+    """Anonymous requests would work at 60/hour instead of 5,000, so the failure has
     to be loud rather than eighty times slower."""
     monkeypatch.delenv("OBSERVATION_INSTALLATION_ID", raising=False)
     get_settings.cache_clear()
@@ -126,8 +126,8 @@ async def test_the_queue_serves_live_then_installed_then_observed(
     """**The ordering that matters**, asserted through `claim_batch` rather than by
     reading the constants: nobody's dashboard may wait on the public board.
 
-    Claimed one at a time, because `RETURNING` promises no ordering *within* a batch —
-    the ordering is over which rows get selected, not the order they come back in. A
+    Claimed one at a time, because `RETURNING` promises no ordering *within* a batch.
+    The ordering is over which rows get selected, not the order they come back in. A
     batch of three would pass this test by accident or fail it by accident.
     """
     observed = await observed_repo(db_session)

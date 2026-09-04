@@ -31,7 +31,7 @@ def minimal_repository(repo_id: int = REPO_ID, name: str = "flakehound") -> dict
 
     Production's `repositories_added` held exactly these five keys:
     `{"id": 1083370024, "name": "form-check", "node_id": "R_kgDOQJLqKA",
-    "private": false, "full_name": "noah-n-pham/form-check"}` — no owner object
+    "private": false, "full_name": "noah-n-pham/form-check"}`. No owner object
     and no default branch, which is why `upsert_repository` falls back to
     splitting `full_name` and leaves the branch unknown.
     """

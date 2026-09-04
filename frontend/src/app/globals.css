@@ -8,7 +8,7 @@
   /* Surfaces */
   --color-bg:            #0F0F0F;  /* page */
   --color-bg-elevated:   #161616;  /* cards, table header strips */
-  --color-border:        #262626;  /* hairlines — deliberately low contrast */
+  --color-border:        #262626;  /* hairlines, deliberately low contrast */
   --color-border-strong: #383838;  /* only for focus/hover */
 
   /* Text */
@@ -20,12 +20,12 @@
   --color-btn-fill:      #E8E8E8;  /* primary button bg */
   --color-btn-fill-text: #111111;  /* primary button text */
 
-  /* Muted status — never saturated */
+  /* Muted status, never saturated */
   --color-ok:            #7C9A7C;
   --color-warn:          #A3936A;
   --color-bad:           #A37C7C;
 
-  /* Type — one family per role, not a menu */
+  /* Type: one family per role, not a menu */
   --font-display: var(--font-instrument-serif), Georgia, serif;
   --font-sans:    var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono:    var(--font-jetbrains-mono), ui-monospace, monospace;

@@ -64,7 +64,7 @@ async def test_the_quantile_matches_postgres_percentile_cont(db_session):
     """Ingest lag and API latency are read side by side, so p95 must mean one thing.
 
     Compared against Postgres itself rather than against numbers I believe Postgres
-    would produce — the claim is that the two implementations agree, and only one of
+    would produce. The claim is that the two implementations agree, and only one of
     them is in this repository.
     """
     samples = [0.004, 0.011, 0.02, 0.35, 1.2, 0.07, 0.09, 0.152]

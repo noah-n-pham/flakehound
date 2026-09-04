@@ -4,7 +4,7 @@
  * one page and two on the other is the drift that never gets noticed.
  *
  * Nothing here recomputes a statistic. Both Wilson bounds and the point estimate
- * arrive from the API, which derives them in `app/stats.py` — a second
+ * arrive from the API, which derives them in `app/stats.py`. A second
  * implementation in TypeScript would be free to disagree with the ranking.
  */
 
@@ -26,7 +26,7 @@ export function formatPoints(lower: number | null, upper: number | null): string
 /**
  * Which workflow a job belongs to, in as few characters as a table column allows.
  *
- * The name when there is one, and the file's basename when there is not — a repo we
+ * The name when there is one, and the file's basename when there is not. A repo we
  * only observe has a path and no name, because the runs listing the crawl reads
  * carries the path. Never blank: two rows differing only by workflow are the reason
  * this column exists, so an empty cell would defeat it.

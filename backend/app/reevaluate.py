@@ -1,7 +1,7 @@
 """Re-derive detection over deliveries already stored, without calling GitHub.
 
 A signal is applied when a delivery is *processed*, so history ingested before that
-signal existed carries no flake events — and nothing will ever redeliver those
+signal existed carries no flake events, and nothing will ever redeliver those
 webhooks. The payloads are still here, though: every queue row keeps the body it was
 enqueued with, so the work can be handed back to the same worker and the same
 handlers, and the answer re-derived from the same bytes.
@@ -37,7 +37,7 @@ async def enqueue_reevaluation(session: AsyncSession, *, repo_id: int | None = N
 
     The new rows carry no `delivery_id`: the delivery is already recorded and its id is
     a primary key that cannot repeat. That is exactly the case the queue was designed
-    to allow — a row with work to do and no inbound delivery behind it.
+    to allow: a row with work to do and no inbound delivery behind it.
 
     Only rows enqueued by the webhook path are copied, so running this twice re-reads
     the original deliveries instead of compounding its own output. The original

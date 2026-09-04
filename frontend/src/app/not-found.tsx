@@ -23,7 +23,7 @@ export default function NotFound() {
       />
       <Body className="mt-8">
         This URL does not match anything here. Nothing was looked up and nothing
-        was refused — a missing page and a repository you cannot see are
+        was refused. A missing page and a repository you cannot see are
         deliberately indistinguishable in this app, so a 404 is never evidence
         either way.
       </Body>

@@ -2,7 +2,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-/** Uppercase mono section label — 11px, wide tracking, faint. */
+/** Uppercase mono section label: 11px, wide tracking, faint. */
 export function SectionLabel({ children }: { children: ReactNode }) {
   return (
     <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-faint">
@@ -86,7 +86,7 @@ export function Body({
 }
 
 /**
- * The content column. 680px, or 960px when a data table needs the room — those are
+ * The content column. 680px, or 960px when a data table needs the room. Those are
  * the only two widths DESIGN.md allows, which is why this takes a boolean and not a
  * width.
  */
@@ -129,7 +129,7 @@ export function MetaStrip({ items }: { items: ReactNode[] }) {
 /**
  * A major page section: 96px of rhythm above it, an uppercase mono label, 32px
  * between label and content. Every page was hand-rolling that triple and
- * `/styleguide` kept a private copy of it — drift in the file whose job is to
+ * `/styleguide` kept a private copy of it: drift in the file whose job is to
  * prevent drift.
  */
 export function Section({
@@ -215,7 +215,7 @@ export function toneClass(tone: Tone): string {
 /**
  * The one bar geometry in the app: an 88px hairline track, a faint span between two
  * values, and an optional bright tick. `IntervalBar` and `ShareBar` are two meanings
- * of it, not two implementations — the second version of this was the thing worth
+ * of it, not two implementations. The second version of this was the thing worth
  * avoiding, so the semantics live in the wrappers and the arithmetic lives here.
  *
  * `max` is the top of the scale and belongs to the *page*, never the row: every bar in
@@ -235,8 +235,8 @@ function Track({
   const scale = max > 0 ? max : 1;
   const position = (value: number) => Math.min(Math.max(value / scale, 0), 1) * 100;
   const left = position(from);
-  // A zero-width span is a real answer — a very certain interval nearly is one, and a
-  // job that burned almost no time is one — so it has to stay visible.
+  // A zero-width span is a real answer (a very certain interval nearly is one, and a
+  // job that burned almost no time is one), so it has to stay visible.
   const width = Math.max(position(to) - left, 0.8);
 
   return (
@@ -258,7 +258,7 @@ function Track({
 /**
  * A confidence interval drawn to scale: the interval as a faint span, the point
  * estimate as a bright tick inside it. Beside the printed range it answers the
- * question the numbers make you do arithmetic for — how wide is this, next to the row
+ * question the numbers make you do arithmetic for: how wide is this, next to the row
  * above it. The printed range carries the absolute values, so the bar never has to be
  * read off an axis it does not have.
  */
@@ -279,7 +279,7 @@ export function IntervalBar({
 
 /**
  * One magnitude from zero, for a share of a total. No tick, because unlike an interval
- * a share has one value and nothing to estimate — the bar *is* the number.
+ * a share has one value and nothing to estimate. The bar *is* the number.
  *
  * `max` is the largest share on the page rather than 1, so the rows of a table whose
  * biggest slice is 12% are still comparable with each other instead of all hugging the
@@ -293,7 +293,7 @@ export type TrendSeries = {
   name: string;
   /**
    * One entry per step of the x axis, `null` where there is no observation. The
-   * caller aligns the array to the calendar — this component spaces entries evenly,
+   * caller aligns the array to the calendar. This component spaces entries evenly,
    * so a series that omitted its empty days would silently compress time.
    */
   values: (number | null)[];
@@ -324,7 +324,7 @@ function segments(values: (number | null)[]): { index: number; value: number }[]
  *
  * It is an inline SVG in a server component rather than a charting library. recharts
  * is on the allowlist and would work, but it renders on the client, and this app has
- * exactly one client component on purpose — a chart of thirty numbers that never
+ * exactly one client component on purpose. A chart of thirty numbers that never
  * changes after render does not need JavaScript in the browser to draw it.
  *
  * `preserveAspectRatio="none"` plus `vectorEffect="non-scaling-stroke"` is what lets
@@ -436,7 +436,7 @@ function markClass(outcome: string | null): string {
  * Each mark is one attempt and each group is one commit, underlined so the group
  * reads as a bracket: a failure beside a pass under one rule is a flake, which is
  * the whole shape both signals look for. The commit's own verdict comes from the
- * API — `flaked` beats `failed` beats `passed` — and is drawn on that rule, so the
+ * API (`flaked` beats `failed` beats `passed`) and is drawn on that rule, so the
  * timeline never re-decides what the leaderboard already ranked.
  *
  * Attempts rather than commits are the marks because a re-run recovery lives
@@ -489,7 +489,7 @@ export function Timeline({ commits }: { commits: TimelineCommit[] }) {
 
 /**
  * Mono links choosing which one thing a page is about. The current choice is plain
- * text rather than a link to itself, which is also the only marker — the nav has no
+ * text rather than a link to itself, which is also the only marker. The nav has no
  * active state either, and inventing a highlight here would be a second convention.
  */
 export function Switcher({
@@ -525,7 +525,7 @@ export function Rule() {
 
 /**
  * A link inside body copy. Monochrome, so the only affordance available is the
- * underline — which is why it is a hairline in the border token rather than the
+ * underline, which is why it is a hairline in the border token rather than the
  * text colour, and why hovering lifts the text instead of changing its hue.
  */
 export function InlineLink({
@@ -551,7 +551,7 @@ export function InlineLink({
  * Separate from `InlineLink` for two reasons that both come from the public board.
  * It carries `target`/`rel`, because sending a reader to github.com to check a claim
  * should not cost them the page they were reading. And it is available in mono, since
- * every one of these is an identifier — a repo name, a run id — and DESIGN.md puts
+ * every one of these is an identifier (a repo name, a run id) and DESIGN.md puts
  * data in the mono face regardless of it being a link.
  */
 export function ExternalLink({
@@ -595,7 +595,7 @@ export function Button({
   size?: "default" | "compact";
   /**
    * Only passable from a client component, which in this app means the error
-   * boundary's retry and nothing else — every other action is a server action in a
+   * boundary's retry and nothing else. Every other action is a server action in a
    * form. `/styleguide` therefore shows this button without a handler.
    */
   onClick?: () => void;

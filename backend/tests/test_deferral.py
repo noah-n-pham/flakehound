@@ -1,6 +1,6 @@
 """Being rate limited is not failing.
 
-The queue has one way to put a row back — `mark_for_retry` — and it counts the
+The queue has one way to put a row back (`mark_for_retry`) and it counts the
 attempt the claim already incremented. Applied to a rate limit that is the wrong
 answer twice over: the attempt was never spent, and five of them inside one
 GitHub window would dead-letter history work with nothing wrong with it.
@@ -26,7 +26,7 @@ from tests.test_backfill import (
     INSTALLATION_ID,
     REPO_ID,
     TOKEN_URL,
-    keypair,  # noqa: F401 — a fixture, used by name
+    keypair,  # noqa: F401  # a fixture, used by name
     seed_repo,
 )
 
@@ -147,7 +147,7 @@ async def test_an_ordinary_failure_still_counts_its_attempt(db_session, monkeypa
 
 
 @pytest.fixture
-def github_over_budget(monkeypatch, keypair):  # noqa: F811 — the imported fixture
+def github_over_budget(monkeypatch, keypair):  # noqa: F811  # the imported fixture
     monkeypatch.setenv("GITHUB_APP_ID", "4792446")
     monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", keypair)
     monkeypatch.setenv("BACKFILL_DAYS", "7")

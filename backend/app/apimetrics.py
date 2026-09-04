@@ -8,13 +8,13 @@ record of it is the row that was already there.
 
 So the API keeps them in memory for a minute and writes them into the same
 `metrics_snapshots` table the worker writes. The safety rule is one writer per
-*series*, not one writer per table — see `metrics.store_samples`.
+*series*, not one writer per table. See `metrics.store_samples`.
 
 **Latency is labelled with the route template, never the request path.** A label of
 `/api/repos/1352471967/flaky` would create one series per repository and a new one
 every time a repository was added; `/api/repos/{repo_id}/flaky` is the thing whose
-latency anyone actually wants to know. Unmatched paths — 404s, and anything a scanner
-throws at the tunnel — collapse into one label for the same reason.
+latency anyone actually wants to know. Unmatched paths (404s, and anything a scanner
+throws at the tunnel) collapse into one label for the same reason.
 
 Samples are kept in a **reservoir**, so memory is bounded whatever the traffic is
 while every request in the minute keeps an equal chance of being in the percentile.

@@ -115,7 +115,7 @@ async def test_githubs_count_lowers_ours_and_never_raises_it(clock):
 
     Both directions matter. Being told 2 when we thought 5 must cost us three
     tokens, and being told 4000 when we have spent down to 1 must not hand them
-    back — the difference is requests in flight, which we have spent and GitHub
+    back. The difference is requests in flight, which we have spent and GitHub
     has not yet counted.
     """
     limiter = limiter_for(clock)
@@ -224,7 +224,7 @@ class CountingClock(Clock):
     A clock that only advances when something sleeps makes every waiter move
     global time forward on its own, so concurrent waiters are indistinguishable
     from sequential ones and the test passes against any implementation. This
-    sleeps for real — a tenth of a second at a time — and counts the waits.
+    sleeps for real (a tenth of a second at a time) and counts the waits.
     """
 
     def __init__(self) -> None:
@@ -240,7 +240,7 @@ async def test_waiters_queue_rather_than_stampede():
 
     The lock is held across the sleep for this reason. Released before it, all
     three wake together, one takes the single token that appeared and the other
-    two go back to sleep — the wait count grows quadratically in the number of
+    two go back to sleep. The wait count grows quadratically in the number of
     waiters, which at backfill fan-out is the difference between three wakeups
     and dozens. Correctness is not at stake: the check and the take have no
     `await` between them, so nobody over-issues either way. Only the herd is.

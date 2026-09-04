@@ -102,7 +102,7 @@ def test_the_query_mirrors_the_criteria_and_orders_by_activity():
     assert "pushed:>=2026-08-04" in query
     assert "is:public" in query and "archived:false" in query and "fork:false" in query
     # Nothing about outcomes appears in the query, because search must not pre-select
-    # for flakiness — that is what would make the board report its own ordering.
+    # for flakiness. That is what would make the board report its own ordering.
     assert "conclusion" not in query and "failure" not in query
 
 

@@ -1,9 +1,9 @@
-"""The authorized-repo filter — the boundary that matters most in this service.
+"""The authorized-repo filter: the boundary that matters most in this service.
 
 Two repos exist in every test here, and the caller is authorized for exactly one of
 them. Each test then asks a different way of getting at the other one: list it, read its
 jobs, read its leaderboard, name it in the path while claiming a different set, send no
-set at all. The interesting assertion is never "the right rows came back" — it is that
+set at all. The interesting assertion is never "the right rows came back": it is that
 the second repo is absent, and that absence is indistinguishable from the repo not
 existing.
 """
@@ -61,7 +61,7 @@ async def seed_observed_repo(session) -> None:
 
     Written directly rather than through `deliver()` on purpose: a webhook cannot
     describe this repo, because there is no installation to send one. Everything after
-    the rows themselves is the existing machinery unchanged — real Signal A detection
+    the rows themselves is the existing machinery unchanged: real Signal A detection
     over two real attempts, then the ordinary rollup.
     """
     session.add(
@@ -270,7 +270,7 @@ async def test_the_public_board_is_exempt_from_the_header(client, db_session):
 
     assert response.status_code == 200
     # `khoi/flakehound` is public in the fixtures and `khoi/other` is private, so the
-    # board answers with real rows and no authorized set — while still excluding the
+    # board answers with real rows and no authorized set, while still excluding the
     # private repo that the authorized reads above needed a header to reach.
     assert {row["repo_full_name"] for row in response.json()} == {"khoi/flakehound"}
 
@@ -286,7 +286,7 @@ async def test_an_observed_repo_is_on_the_public_board_but_not_in_any_repo_list(
     """An observed repo belongs to no installation, so it is nobody's repo.
 
     GitHub's installations API can never name one, so the authorized set can never
-    contain one — but the `source = 'installed'` predicate is what makes that structural
+    contain one, but the `source = 'installed'` predicate is what makes that structural
     rather than a property of the BFF being correct.
     """
     await seed_two_repos(db_session)

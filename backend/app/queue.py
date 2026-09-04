@@ -29,8 +29,8 @@ class ClaimedJob:
 def retry_delay_seconds(attempts: int) -> float:
     """Exponential backoff, capped: the delay before attempt `attempts + 1`.
 
-    Without it the five attempts of a row that fails on a transient condition —
-    a Postgres restart, a GitHub 502 — are all spent within one poll interval,
+    Without it the five attempts of a row that fails on a transient condition
+    (a Postgres restart, a GitHub 502) are all spent within one poll interval,
     and work GitHub will never redeliver is dead-lettered a second after the
     outage began.
     """
@@ -97,7 +97,7 @@ async def mark_for_retry(session: AsyncSession, job: ClaimedJob, error: str) -> 
 
     Returns True when the row was dead-lettered. The attempt was already counted
     by the claim, so a row whose count has reached the ceiling would never be
-    selected again — it goes straight to `failed` rather than sitting in
+    selected again. It goes straight to `failed` rather than sitting in
     `pending` looking like work that is about to happen.
     """
     values: dict[str, Any] = {
@@ -128,7 +128,7 @@ async def mark_for_retry(session: AsyncSession, job: ClaimedJob, error: str) -> 
 async def defer(session: AsyncSession, job: ClaimedJob, *, seconds: float, reason: str) -> None:
     """Put a row back without counting the attempt, because nothing was attempted.
 
-    This is for being told to wait — a rate limit — rather than for failing.
+    This is for being told to wait (a rate limit) rather than for failing.
     `mark_for_retry` is the wrong tool: it counts the attempt the claim already
     incremented, so five rate limits in an hour would dead-letter history work
     that nothing is wrong with. Deferral is deliberately unbounded: a
@@ -160,7 +160,7 @@ async def reap_stuck(session: AsyncSession) -> list[int]:
 
     **The timeout must exceed maximum processing time.** Below it the reaper hands
     a second worker a row the first one is still working on, which is not a
-    deadlock but duplicated work — survivable only because every handler is
+    deadlock but duplicated work, survivable only because every handler is
     idempotent, and not something to rely on. The attempt already spent is not
     given back, so a row that reliably kills its worker exhausts its ceiling and
     is dead-lettered rather than being reaped forever.
@@ -188,7 +188,7 @@ async def reap_stuck(session: AsyncSession) -> list[int]:
 async def fail_exhausted(session: AsyncSession) -> list[int]:
     """The sweep that marks spent rows failed, so they are visible.
 
-    A row can reach the ceiling while still `pending` — the worker died between
+    A row can reach the ceiling while still `pending`. The worker died between
     the claim and recording the outcome, so the reaper returned it, or the
     ceiling was lowered under it. Nothing will ever claim it again, and left
     pending it is indistinguishable from work that is merely waiting its turn.

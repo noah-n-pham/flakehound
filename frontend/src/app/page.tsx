@@ -52,7 +52,7 @@ export const dynamic = "force-dynamic";
 
 const WINDOW_DAYS = 30;
 const LIMIT = 50;
-/** Commits on the timeline, not attempts — a heavily re-run commit is one group. */
+/** Commits on the timeline, not attempts. A heavily re-run commit is one group. */
 const COMMITS = 40;
 
 type GroupBy = "workflow" | "job";
@@ -88,7 +88,7 @@ function jobRows(jobs: JobRow[]) {
 /**
  * One scale for every bar in the table, so their widths are comparable. The widest
  * upper bound on the page sets it, with a floor for a repo whose intervals are all
- * tiny — a 0.4pt scale would draw three indistinguishable full-width bars.
+ * tiny. A 0.4pt scale would draw three indistinguishable full-width bars.
  */
 function intervalScale(board: FlakyRow[]): number {
   return Math.max(...board.map((row) => row.wilson_upper ?? 0), 0.05);
@@ -135,7 +135,7 @@ function stateTone(state: CommitHistory["state"]): Tone {
 
 /**
  * The API returns the newest commit first, because a caller asking for ten wants the
- * ten most recent. A timeline reads left to right in time, so it is reversed here —
+ * ten most recent. A timeline reads left to right in time, so it is reversed here
  * once, at the boundary, rather than by having the API answer in an order that would
  * make `limit` mean the ten oldest.
  */
@@ -188,7 +188,7 @@ function minutesRows(minutes: MinutesRow[]) {
 /**
  * The chart's x axis is the window's calendar, not the list of days that have data.
  * The API omits a day the job did not run, so the points are placed back onto every
- * day of the window here and the missing ones stay null — a series drawn from the rows
+ * day of the window here and the missing ones stay null. A series drawn from the rows
  * alone would space eleven scattered days evenly and quietly rewrite when they were.
  *
  * The day count is `WINDOW_DAYS + 1` because the API's cutoff is inclusive: a 30-day
@@ -284,7 +284,7 @@ export default async function ReportPage({
   ]);
 
   // The timeline and the duration trend are about one job, and which job is only
-  // knowable once the board has answered — the default is the one ranked worst.
+  // knowable once the board has answered. The default is the one ranked worst.
   const tracked = pickJob(board, requested.job);
   const [history, trend] = tracked
     ? await Promise.all([
@@ -320,7 +320,7 @@ export default async function ReportPage({
     <Page wide>
       <Header />
       <Body className="mt-8 max-w-[680px]">
-        Every number here was derived from GitHub Actions webhooks — deduplicated
+        Every number here was derived from GitHub Actions webhooks, deduplicated
         on delivery id, written to Postgres by one worker, then swept into a daily
         rollup. Nothing was uploaded from inside a test job and no workflow file
         was edited to produce it.
@@ -377,8 +377,8 @@ export default async function ReportPage({
         <Section label="ranked by wilson lower bound">
           <Body className="max-w-[680px]">
             Nothing ranked yet. A job appears here once it has had at least one
-            opportunity to flake in the window — a completed run whose failure
-            could be judged — and the rollup that feeds this table is swept once a
+            opportunity to flake in the window: a completed run whose failure
+            could be judged. The rollup that feeds this table is swept once a
             minute, so a repository installed in the last few seconds is empty
             rather than broken.
           </Body>
@@ -455,7 +455,7 @@ export default async function ReportPage({
                   <Body className="mt-8 max-w-[680px]">
                     Both lines are the rollup&apos;s own per-day percentiles, drawn on
                     the window&apos;s calendar rather than on the days that happen to
-                    have data — a day this job did not finish anything is a gap, because
+                    have data. A day this job did not finish anything is a gap, because
                     it did not take zero seconds. There is no window-wide p95 anywhere
                     on this page: percentiles do not sum, and the only honest way back
                     to one would be to rescan every job row.
@@ -517,7 +517,7 @@ export default async function ReportPage({
             an allowance that public ones never touch. None of those three are visible
             in the Actions API, so this page reports what it can actually see. The
             column says <span className="font-mono">mean</span> rather than median for a
-            related reason — the rollup keeps a percentile per day, and percentiles do
+            related reason: the rollup keeps a percentile per day, and percentiles do
             not add up across days.
           </Body>
         </Section>
@@ -554,8 +554,8 @@ export default async function ReportPage({
 
       <Section label="how the ranking works">
         <Body className="max-w-[680px]">
-          A flake is a job that failed and then passed with the commit unchanged —
-          either on a re-run of the same run, or against a sibling job on the same
+          A flake is a job that failed and then passed with the commit unchanged,
+          either on a re-run of the same run or against a sibling job on the same
           commit. An opportunity is a completed job whose result could be judged
           that way at all, which is why the denominator is smaller than the
           repository&apos;s job execution count. The rate is flakes over
@@ -569,7 +569,7 @@ export default async function ReportPage({
           included, because two matrix legs are two different jobs that fail for
           different reasons. And a re-run that passes because somebody fixed
           something outside the repository looks exactly like a flake from the
-          Actions API — the commit is identical either way — so a repository whose
+          Actions API, because the commit is identical either way, so a repository whose
           workflow depends on external state will see a rate that is too high
           rather than too low.
         </Body>
@@ -593,7 +593,7 @@ function Header() {
 
 /**
  * Which repo the page is about. `repos` came back from the API already filtered to
- * the caller's authorized set, so matching against it is the check — a repo id in the
+ * the caller's authorized set, so matching against it is the check. A repo id in the
  * query string is a client-supplied value and is never passed through on its own.
  * An id that survives the filter but names nothing is a 404, the same answer the API
  * gives for an unauthorized repo, so the query string cannot be used to learn which
@@ -622,7 +622,7 @@ function pickJob(board: FlakyRow[], requested: string | undefined): FlakyRow | u
 
 /**
  * How the minutes table is grouped. A value that is neither is a 404 rather than a
- * silent fallback to the default, matching what `?repo=` and `?job=` do — a query
+ * silent fallback to the default, matching what `?repo=` and `?job=` do. A query
  * string this page does not understand is a URL that does not exist.
  */
 function pickGrouping(requested: string | undefined): GroupBy {

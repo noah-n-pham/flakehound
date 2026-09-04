@@ -5,7 +5,7 @@ Identity keys are fixed:
 * an installation, repository, workflow, job, and delivery are keyed on the id
   GitHub gives them;
 * a **workflow run is keyed on (run_id, run_attempt)**, never run id alone;
-* dedup is `webhook_deliveries.delivery_id` being the primary key — nothing
+* dedup is `webhook_deliveries.delivery_id` being the primary key. Nothing
   outside Postgres participates.
 
 Columns, types, and indexes are implementation choices and may change.
@@ -99,8 +99,8 @@ class Installation(Base):
 class Repository(Base):
     """One per repo, keyed on GitHub's repo id. Carries the backfill cursor.
 
-    A repo is either **installed** — belonging to a GitHub App installation, which is
-    how every repo got here before the public board existed — or **observed**, crawled
+    A repo is either **installed** (belonging to a GitHub App installation, which is
+    how every repo got here before the public board existed) or **observed**, crawled
     from public GitHub with no installation behind it.
 
     `installation_id` is therefore nullable, and NULL is the *only* way to say "nobody
@@ -144,7 +144,7 @@ class Repository(Base):
         # convention.** An observed repo must be public and must have no installation;
         # an installed one must have an installation. So a private repo can never be
         # observed, and no amount of care or forgetting on the write path can change
-        # that — the database refuses the row. SPEC §4 states it in exactly these terms.
+        # that. The database refuses the row. SPEC §4 states it in exactly these terms.
         CheckConstraint(
             "(source = 'installed' AND installation_id IS NOT NULL)"
             " OR (source = 'observed' AND installation_id IS NULL AND private = false)",
@@ -229,8 +229,8 @@ class EventQueue(Base):
 
     __table_args__ = (
         CheckConstraint(_in("status", QUEUE_STATUSES), name="status"),
-        # Query: claim a batch — pending, attempts left, backoff elapsed, priority
-        # then age, FOR UPDATE SKIP LOCKED. The backoff test stays out of the
+        # Query: claim a batch (pending, attempts left, backoff elapsed, priority
+        # then age, FOR UPDATE SKIP LOCKED). The backoff test stays out of the
         # predicate because `now()` is not immutable; it filters the rows this
         # index already narrowed to.
         Index(
@@ -290,7 +290,7 @@ class Job(Base):
     Different legs are different jobs and are never normalized together.
 
     `head_sha` and `workflow_id` are denormalized off the run so Signal B's
-    grouping query needs no join — the hottest query in the system.
+    grouping query needs no join, the hottest query in the system.
     """
 
     __tablename__ = "jobs"
@@ -320,11 +320,11 @@ class Job(Base):
             ["workflow_runs.run_id", "workflow_runs.run_attempt"],
             name="fk_jobs_run",
         ),
-        # Query: Signal B — conclusions for one (workflow, job name, sha) group.
+        # Query: Signal B: conclusions for one (workflow, job name, sha) group.
         Index("ix_jobs_signal_b", "repo_id", "workflow_id", "name", "head_sha"),
-        # Query: Signal A — attempts of one job within one run, in attempt order.
+        # Query: Signal A: attempts of one job within one run, in attempt order.
         Index("ix_jobs_signal_a", "repo_id", "run_id", "name", "run_attempt"),
-        # Query: `/api/repos/{id}/jobs` — one repo's newest executions.
+        # Query: `/api/repos/{id}/jobs`: one repo's newest executions.
         #
         # The ordering is spelled out because a b-tree only satisfies a sort it
         # matches exactly, and `DESC` alone would put NULLS FIRST. Without this the
@@ -336,7 +336,7 @@ class Job(Base):
             text("started_at DESC NULLS LAST"),
             text("id DESC"),
         ),
-        # Query: which repos the rollup sweep must recompute — the repos whose job
+        # Query: which repos the rollup sweep must recompute: the repos whose job
         # rows moved since the last pass.
         Index("ix_jobs_recent_activity", "updated_at"),
     )
@@ -350,8 +350,8 @@ class Job(Base):
 class FlakeEvent(Base):
     """Idempotency layer 3: unique on the grouping key plus the signal.
 
-    The grouping key differs per signal — Signal A groups by run, Signal B by
-    (workflow, sha) — so the unused columns are NULL and the constraint is
+    The grouping key differs per signal (Signal A groups by run, Signal B by
+    (workflow, sha)), so the unused columns are NULL and the constraint is
     declared NULLS NOT DISTINCT, which makes re-evaluating the same history a
     no-op instead of a duplicate.
     """
@@ -388,11 +388,11 @@ class FlakeEvent(Base):
 
 
 class JobStatsDaily(Base):
-    """The rollup every read endpoint is served from — never raw facts.
+    """The rollup every read endpoint is served from, never raw facts.
 
     One row per (repo, workflow, job name, UTC day). `opportunities` and `flakes`
     are the flake rate's two counts, so a window of these rows sums to the same rate
-    the raw facts give — see `app/rollup.py` for why each count is what it is.
+    the raw facts give. See `app/rollup.py` for why each count is what it is.
     """
 
     __tablename__ = "job_stats_daily"

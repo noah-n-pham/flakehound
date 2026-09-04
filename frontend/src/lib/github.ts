@@ -13,7 +13,7 @@
  *
  * The second is not the same as "every repo in the installation". On an organisation
  * install, GitHub returns only the repos this particular user can see, which is the
- * whole point — the installation is the org's, the authorization is the person's.
+ * whole point: the installation is the org's, the authorization is the person's.
  */
 
 import { cookies } from "next/headers";

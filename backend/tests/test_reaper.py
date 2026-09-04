@@ -75,7 +75,7 @@ async def test_a_claim_younger_than_the_timeout_survives_it(db_session, reaper_t
     """The timeout exceeding maximum processing time is the whole safety margin.
 
     Reaping a row that is still being worked on is not a deadlock, it is
-    duplicated work — so a claim younger than the timeout must survive however
+    duplicated work, so a claim younger than the timeout must survive however
     long it has been held. One four-minute-old claim is checked against two
     timeouts rather than one: an assertion that only ever says "not reaped"
     passes just as well against a reaper that reads no clock at all.
@@ -186,7 +186,7 @@ async def test_one_sweep_reaps_then_dead_letters_a_row_on_its_last_attempt(db_se
 
     A row whose final attempt died with its worker comes back pending with its
     attempts spent, which nothing will ever claim. Failing spent rows after
-    reaping — not before — is what makes it visible in the same pass.
+    reaping (not before) is what makes it visible in the same pass.
     """
     enqueue(db_session, payloads.workflow_job(), attempts=2, max_attempts=3)
     await db_session.flush()

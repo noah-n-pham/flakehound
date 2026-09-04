@@ -1,7 +1,7 @@
 """The Wilson interval and the leaderboard ranked by its lower bound.
 
 The reference values below are the published 95% Wilson intervals for those counts,
-not this implementation's own output — a test that recomputed the formula would only
+not this implementation's own output. A test that recomputed the formula would only
 prove the code agrees with itself.
 """
 
@@ -24,7 +24,7 @@ async def leaderboard(session, *, repo_id: int = REPO_ID, **kwargs):
     """The leaderboard as a reader sees it: rolled up first, then summed.
 
     The rollup is a separate pass on the worker's sweep, so a test that wants to read
-    has to run it — which is the same ordering production has, one minute compressed.
+    has to run it, which is the same ordering production has, one minute compressed.
     """
     await rollup_repository(session, repo_id=repo_id, now=kwargs.get("now"))
     return await flaky_jobs(session, repo_id=repo_id, **kwargs)
@@ -54,7 +54,7 @@ def test_a_zero_flake_rate_does_not_reliably_give_a_zero_lower_bound():
 
     At p = 0 the centre and the margin are equal, so their difference is zero in
     arithmetic and floating-point noise here: for most denominators it cancels exactly,
-    and for some — 64 opportunities, say — it leaves 3.5e-18 behind. Ranking is
+    and for some (64 opportunities, say) it leaves 3.5e-18 behind. Ranking is
     unaffected, since every real bound is many orders of magnitude larger. Filtering is
     not: "wilson_lower > 0" would put a job that never flaked on a board of flaky jobs,
     for 64 runs and not for 65, which is the kind of bug that ships.
@@ -102,8 +102,8 @@ def test_more_evidence_at_the_same_rate_raises_the_lower_bound():
 def test_the_lower_bound_dampens_the_small_sample_the_spec_warns_about():
     """SPEC's example: one flake in two runs must not simply outrank fifty in a thousand.
 
-    Wilson compresses the gap from tenfold to roughly 2.5x rather than reversing it —
-    two runs both flaking really is some evidence. What it takes to *lead* a leaderboard
+    Wilson compresses the gap from tenfold to roughly 2.5x rather than reversing it.
+    Two runs both flaking really is some evidence. What it takes to *lead* a leaderboard
     is therefore sustained evidence, but a tiny sample is not silenced, and this test
     pins the real behaviour rather than the stronger claim.
     """
@@ -178,7 +178,7 @@ async def test_both_signals_naming_one_job_run_count_it_once(db_session):
 
 
 async def test_a_job_with_no_opportunities_is_absent_rather_than_undefined(db_session):
-    """The rollup still has a row for it — two runs happened — with no opportunities."""
+    """The rollup still has a row for it (two runs happened) with no opportunities."""
     await deliver(db_session, attempt(1, "cancelled"), attempt(2, "skipped"))
 
     assert await leaderboard(db_session) == []

@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   // so no page can drift to a different separator or word order.
   title: {
     default: "flakehound",
-    template: "%s — flakehound",
+    template: "%s · flakehound",
   },
   description: "flaky ci detection, from the github actions history you already have",
 };
@@ -46,7 +46,7 @@ export default function RootLayout({
       className={`${instrumentSerif.variable} ${inter.variable} ${jetbrainsMono.variable}`}
     >
       {/* The shell is a column: nav, then the page, then the footer pinned below it
-          rather than to the viewport — every page here is taller than the screen. */}
+          rather than to the viewport. Every page here is taller than the screen. */}
       <body className="flex min-h-screen flex-col">
         <Nav />
         <div className="flex-1">{children}</div>

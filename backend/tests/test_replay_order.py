@@ -1,6 +1,6 @@
 """Fact writes must not depend on the order their deliveries are processed in.
 
-GitHub sends three deliveries per job and per run — queued, in progress, completed — and
+GitHub sends three deliveries per job and per run (queued, in progress, completed) and
 nothing guarantees the order they are *processed* in. `claim_batch` chooses which rows to
 claim by priority and age, but `RETURNING` carries no ordering guarantee within a batch,
 and the reaper re-runs abandoned messages beside live ones.

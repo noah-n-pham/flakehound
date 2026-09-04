@@ -19,12 +19,12 @@ declare module "next-auth" {
  * `@auth/core/jwt` and not `next-auth/jwt`: the latter is a bare `export *` of the
  * former, and augmenting a re-export declares a new interface rather than merging
  * into the original. `JWT extends Record<string, unknown>`, so getting this wrong
- * does not fail — every field silently types as `unknown`.
+ * does not fail. Every field silently types as `unknown`.
  */
 declare module "@auth/core/jwt" {
   interface JWT {
     login?: string;
-    /** The GitHub user access token. Server-side only — never copied to the session. */
+    /** The GitHub user access token. Server-side only, never copied to the session. */
     accessToken?: string;
   }
 }

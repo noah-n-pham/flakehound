@@ -1,4 +1,4 @@
-"""One job's history, commit by commit — the timeline underneath the leaderboard.
+"""One job's history, commit by commit: the timeline underneath the leaderboard.
 
 The leaderboard says a job flakes at some rate. This says *where*: the commits it
 passed on, the commits it failed on, and the commits it did both on, which is what a
@@ -12,7 +12,7 @@ could not answer this at any price. These are individual job executions, the sam
 exemption `/api/repos/{id}/jobs` already documents.
 
 **A flake mark is the same job run the rate counted.** The implicated ids come from
-`detection.implicated_job_ids()` through `detection.flake_filter()` — the pair
+`detection.implicated_job_ids()` through `detection.flake_filter()`: the pair
 `app/rollup.py` counts its `flakes` with. So a timeline's marks sum to the
 leaderboard's numerator rather than to a second opinion about it, and
 `tests/test_history.py` asserts exactly that against the leaderboard's oracle.
@@ -120,7 +120,7 @@ class CommitHistory:
 
     @property
     def flakes(self) -> int:
-        """Implicated job *runs*, the leaderboard's unit — not incidents.
+        """Implicated job *runs*, the leaderboard's unit, not incidents.
 
         A failure and its recovery are two implicated runs of one incident, because
         the flake rate's numerator counts runs so that it counts the same thing as
@@ -154,8 +154,8 @@ async def job_history(
     one commit must not be able to push every other commit off a timeline of ten.
 
     `workflow_id` is optional and narrows rather than identifies. Two workflows can
-    run a job of the same name on the same commit and they are different jobs — the
-    reason Signal B groups on the workflow too — so a caller that has an id should
+    run a job of the same name on the same commit and they are different jobs (the
+    reason Signal B groups on the workflow too), so a caller that has an id should
     pass it, and one that does not gets the union rather than an error.
     """
     cutoff = (now or datetime.now(UTC)) - timedelta(days=window_days)

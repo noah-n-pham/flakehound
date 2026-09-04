@@ -72,7 +72,7 @@ fi
 
 for rate in ${RATES}; do
   # k6 exits 99 when a threshold fails, which is a result and not an error here.
-  run_k6 "${rate}" || echo "  (k6 exit $? — a threshold failed, see thresholds_failed)"
+  run_k6 "${rate}" || echo "  (k6 exit $?: a threshold failed, see thresholds_failed)"
   echo "  backlog after ${rate}/s: pending=$(pending)"
 done
 

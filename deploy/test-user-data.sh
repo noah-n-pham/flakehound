@@ -15,7 +15,7 @@
 # then executed, the unit file gets written, the heredocs get expanded, the
 # python that parses the RDS secret really runs. What is faked: `dnf`, `docker`,
 # `systemctl`, `journalctl`, the AWS CLI, and the instance metadata service. So
-# this proves the shape of the bootstrap and the order it does things in — not
+# this proves the shape of the bootstrap and the order it does things in, not
 # that the credentials are right or that RDS is reachable, which only the real
 # boot self-test can say.
 set -euo pipefail
@@ -149,7 +149,7 @@ echo "ok    restarted onto the new digest"
 
 echo
 echo "=== a describe that does not return a digest is not a deploy ==="
-# Every failure mode of the AWS CLI ends up here — throttling, an expired
+# Every failure mode of the AWS CLI ends up here: throttling, an expired
 # instance profile, a repository that answers `None`. Restarting on any of them
 # would turn a transient API error into an outage.
 cat > "$STUBS/aws" <<'EOF'

@@ -1,4 +1,4 @@
-"""Recording an inbound delivery and queuing its work — atomically."""
+"""Recording an inbound delivery and queuing its work, atomically."""
 
 from typing import Any
 
@@ -27,7 +27,7 @@ async def record_delivery(
 
     Returns False if GitHub has delivered this id before. Dedup is the primary
     key: the duplicate insert raises, we catch it, and nothing is enqueued. That
-    constraint is the whole mechanism — nothing outside Postgres participates.
+    constraint is the whole mechanism. Nothing outside Postgres participates.
     """
     action = payload.get("action")
     try:

@@ -2,7 +2,7 @@
 
 `/healthz` and the webhook are the other two unauthenticated paths, and the webhook
 authenticates by HMAC signature. This router therefore has **no auth dependency by
-design**, which is the opposite of every other router here — so what keeps it safe is
+design**, which is the opposite of every other router here, so what keeps it safe is
 the query, not the caller: `public_flaky_jobs()` joins `repositories` on
 `private = false` and takes no repo id, so there is nothing a caller can say that
 widens what it returns.

@@ -67,7 +67,7 @@ async def test_reevaluated_rows_are_backfill_priority_with_no_delivery_behind_th
     ).scalars()
     for row in rows:
         # Live events must keep overtaking history, and the delivery id is already
-        # taken — it is the primary key of a row that exists.
+        # taken. It is the primary key of a row that exists.
         assert row.priority == 1
         assert row.delivery_id is None
         assert row.status == "pending"
