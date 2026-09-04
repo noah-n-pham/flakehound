@@ -13,6 +13,7 @@ from app.backfill import (
 )
 from app.detection import evaluate_job
 from app.logging import get_logger
+from app.ops import DISCOVER_JOB_TYPE, handle_discover_band
 from app.queue import ClaimedJob
 from app.upserts import (
     parse_timestamp,
@@ -235,10 +236,12 @@ HANDLERS = {
 
 # Backfill rows carry no GitHub event — nothing was delivered to us — so they are
 # dispatched on `job_type` instead. `webhook` and `reevaluate` both fall through
-# to the event table below.
+# to the event table below. An operator command is the same shape: nobody delivered
+# it either, and the queue is how it reaches the process that can do the work.
 JOB_TYPE_HANDLERS = {
     RUNS_JOB_TYPE: handle_backfill_runs,
     JOBS_JOB_TYPE: handle_backfill_jobs,
+    DISCOVER_JOB_TYPE: handle_discover_band,
 }
 
 
