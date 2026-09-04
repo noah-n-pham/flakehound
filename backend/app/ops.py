@@ -1,9 +1,8 @@
 """The control channel: the handful of things an operator has to be able to trigger.
 
-Until now these ran as `aws ecs run-task` with a command override — a one-off copy of
-the image, started by hand, printing into CloudWatch (D-022). That channel disappears
-with the ECS service, and Section I still needs to drive discovery and crawl tranches,
-so the capability moves here.
+They used to run as `aws ecs run-task` with a command override — a one-off copy of the
+image, started by hand, printing into CloudWatch (D-022). ECS is gone and Section I
+still needs to drive discovery and crawl tranches, so the capability lives here.
 
 **The endpoint enqueues; the worker works.** A discovery pass is a few minutes of
 HTTP against GitHub, and Cloudflare gives up on an origin request long before that —

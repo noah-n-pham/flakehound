@@ -77,8 +77,8 @@ install -d -m 0700 /run/flakehound
 # flakehound-secrets — the container's environment, assembled on the box.
 #
 # Written to tmpfs, so no credential is ever on the disk, in the image, or in a
-# process argument list. This replaces the task definition's `secrets` block;
-# the names and the sources are the same ones ECS injected. The unit runs it on
+# process argument list. It took over from the ECS task definition's `secrets`
+# block, and keeps that block's names and sources. The unit runs it on
 # every start, so a rotated RDS password is picked up by a restart and nothing
 # holds a stale copy.
 # ---------------------------------------------------------------------------

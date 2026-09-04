@@ -1,9 +1,14 @@
 """Read the rollup out of production and check it against the facts it summarises.
 
-Run with an ECS command override; the output lands in CloudWatch. It is the
-production twin of `tests/test_rollup.py::test_the_rollup_agrees_with_the_raw_facts`:
-the same leaderboard computed from `job_stats_daily` and from the job rows, printed
-side by side so a difference is visible rather than argued about.
+RDS is unreachable from a laptop, and the box takes no inbound connection, so this
+runs where the database is: as the command of a throwaway instance whose user-data
+starts the image with it, the same shape as the boot self-test, printing into
+`/flakehound/app`.
+
+It is the production twin of
+`tests/test_rollup.py::test_the_rollup_agrees_with_the_raw_facts`: the same
+leaderboard computed from `job_stats_daily` and from the job rows, printed side by
+side so a difference is visible rather than argued about.
 """
 
 import asyncio

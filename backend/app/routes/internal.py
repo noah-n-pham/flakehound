@@ -72,9 +72,9 @@ async def metrics(session: SessionDep) -> MetricsResponse:
 # --------------------------------------------------------------------------- #
 # The control channel (D-058)
 #
-# The instance takes no inbound connection and there is no shell on it, so this is
-# how the build drives the observational crawl now that `aws ecs run-task` is going
-# away. Two operations and one readout, all named and typed — nothing here takes a
+# The instance takes no inbound connection and there is no shell on it, so this is the
+# only way the build drives the observational crawl now that `aws ecs run-task` is
+# gone. Two operations and one readout, all named and typed — nothing here takes a
 # query, a command, or anything else that would make it a remote shell.
 # --------------------------------------------------------------------------- #
 
