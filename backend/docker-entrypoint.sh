@@ -1,22 +1,22 @@
 #!/bin/bash
 # Three processes, one container: the API, the worker, and the tunnel.
-# If any of them dies the container dies, so ECS replaces the task rather than
-# leaving a half-running service that still answers its health check.
+# If any of them dies the container dies, so systemd starts a fresh one rather
+# than leaving a half-running service that still answers its health check.
 set -euo pipefail
 
 log() {
   printf '{"event":"%s","level":"info","logger":"entrypoint","detail":"%s"}\n' "$1" "${2:-}"
 }
 
-# Without DB_HOST the settings fall back to the local compose Postgres, so a task
-# definition that forgot to inject the RDS credentials would fail against
-# localhost instead of saying what was actually wrong.
+# Without DB_HOST the settings fall back to the local compose Postgres, so a box
+# that came up without the RDS credentials injected would fail against localhost
+# instead of saying what was actually wrong.
 if [[ "${APP_ENV:-local}" == "production" && -z "${DB_HOST:-}" ]]; then
   echo '{"event":"database.host_missing","level":"error","logger":"entrypoint"}' >&2
   exit 1
 fi
 
-# One task, so no two migrators can race here.
+# One container, so no two migrators can race here.
 log "migrate.start"
 alembic upgrade head
 log "migrate.done"
@@ -47,7 +47,7 @@ if [[ -n "${TUNNEL_TOKEN:-}" ]]; then
   pids+=("$!")
   log "tunnel.started"
 elif [[ "${APP_ENV:-local}" == "production" ]]; then
-  # Without the tunnel nothing can reach this task, and there is no second way in.
+  # Without the tunnel nothing can reach this container, and there is no second way in.
   echo '{"event":"tunnel.token_missing","level":"error","logger":"entrypoint"}' >&2
   exit 1
 else

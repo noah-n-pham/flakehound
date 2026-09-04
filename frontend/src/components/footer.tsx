@@ -18,7 +18,7 @@ export function Footer() {
             "github actions webhooks",
             "deduplicated on delivery id",
             "postgres is the queue",
-            "one container on ecs fargate",
+            "one container on one ec2 instance",
             "no workflow file edited, nothing uploaded from a test job",
           ]}
         />

@@ -2,14 +2,20 @@
 # Bootstrap for the one instance that runs flakehound.
 #
 # Passed to `ec2 run-instances --user-data`, so this file is the whole
-# configuration of the box: there is no console step and nothing typed by hand.
-# The instance is cattle — to change how it is set up, change this file and
-# launch a replacement rather than logging in and editing.
+# configuration of the box: there is no console step and nothing typed by hand,
+# and the four scripts and the unit file it installs are embedded here rather
+# than fetched, because a fresh box has no way to read a private repository.
+#
+# The instance is cattle. There is no shell on it — the build's IAM user is
+# denied every SSM action — so changing how it is set up means editing this file
+# and launching a replacement. That is a constraint, and it is also the property
+# that keeps the box's configuration honest.
 #
 # Everything it needs comes over outbound connections: the image from ECR, the
 # credentials from Secrets Manager, both authorized by the instance profile.
-# Nothing dials in. The security group has no inbound rule and the container
-# publishes no port; ingress is `cloudflared` inside the container dialling out.
+# Nothing dials in. The security group has no inbound rule, and the container
+# publishes its port on loopback only; ingress is `cloudflared` inside the
+# container dialling out to Cloudflare.
 set -euo pipefail
 
 REGION=us-east-1
@@ -61,12 +67,20 @@ trap ship_init_log EXIT
 dnf install -y docker
 systemctl enable --now docker
 
+# Created up front rather than as a side effect of whichever script runs first.
+# Getting that order wrong once cost six minutes of production: the self-test was
+# written into this directory before the script that used to create it had run,
+# `set -e` killed the bootstrap, and the box came up with no service on it.
+install -d -m 0700 /run/flakehound
+
 # ---------------------------------------------------------------------------
-# The container's environment, assembled on the box from Secrets Manager.
+# flakehound-secrets — the container's environment, assembled on the box.
 #
 # Written to tmpfs, so no credential is ever on the disk, in the image, or in a
 # process argument list. This replaces the task definition's `secrets` block;
-# the names and the sources are the same ones ECS injected.
+# the names and the sources are the same ones ECS injected. The unit runs it on
+# every start, so a rotated RDS password is picked up by a restart and nothing
+# holds a stale copy.
 # ---------------------------------------------------------------------------
 install -m 0755 /dev/stdin /usr/local/bin/flakehound-secrets <<'SCRIPT'
 #!/bin/bash
@@ -117,12 +131,117 @@ EOF
 chmod 0600 "${RUN_DIR}/env"
 SCRIPT
 
-/usr/local/bin/flakehound-secrets
+# ---------------------------------------------------------------------------
+# flakehound-image — resolve the tag to a digest, pull it, and record it.
+#
+# The container is always started **by digest, never by tag.** A tag can move
+# under a running unit, and then a restart would silently land on different
+# bytes than the ones that were started and verified.
+# ---------------------------------------------------------------------------
+install -m 0755 /dev/stdin /usr/local/bin/flakehound-image <<'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+
+REGION=us-east-1
+ECR=753397111940.dkr.ecr.us-east-1.amazonaws.com/flakehound
+TAG="${1:-latest}"
+RUN_DIR=/run/flakehound
+
+install -d -m 0700 "$RUN_DIR"
 
 aws ecr get-login-password --region "$REGION" \
   | docker login --username AWS --password-stdin "${ECR%/*}"
 
-docker pull "${ECR}:latest"
+digest=$(aws ecr describe-images --region "$REGION" --repository-name flakehound \
+  --image-ids "imageTag=${TAG}" --query 'imageDetails[0].imageDigest' --output text)
+
+docker pull "${ECR}@${digest}"
+
+token=$(curl -sf -X PUT http://169.254.169.254/latest/api/token \
+  -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
+instance=$(curl -sf -H "X-aws-ec2-metadata-token: ${token}" \
+  http://169.254.169.254/latest/meta-data/instance-id)
+
+cat > "${RUN_DIR}/runtime" <<EOF
+IMAGE=${ECR}@${digest}
+LOG_STREAM=app/${instance}
+EOF
+SCRIPT
+
+# ---------------------------------------------------------------------------
+# flakehound-run — the container, in the foreground.
+#
+# A wrapper rather than a long ExecStart line, because systemd reads
+# EnvironmentFile *before* ExecStartPre runs: the digest that ExecStartPre had
+# just resolved would not be the one ExecStart used. Reading the file here means
+# there is no window in which those two disagree.
+#
+# `exec` makes the docker client the unit's main process, so systemd's SIGTERM
+# reaches the entrypoint's trap and the three processes shut down in order.
+# ---------------------------------------------------------------------------
+install -m 0755 /dev/stdin /usr/local/bin/flakehound-run <<'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+
+REGION=us-east-1
+LOG_GROUP=/flakehound/app
+
+# shellcheck disable=SC1091
+. /run/flakehound/runtime
+
+# The port is published on loopback only. Nothing on the network can reach it —
+# the security group has no inbound rule either — and it exists so that a deploy
+# can gate on the container's own health check and so the load tests SPEC §10
+# asks for can hit the container directly instead of measuring Cloudflare.
+#
+# The memory cap is deliberate on a 1 GB box: an unbounded container that leaks
+# would have the kernel choose the victim, and it might choose dockerd.
+exec /usr/bin/docker run --rm --name flakehound \
+  --env-file /run/flakehound/env \
+  -v /run/flakehound/github-app.pem:/run/secrets/github-app.pem:ro \
+  -p 127.0.0.1:8000:8000 \
+  --memory 768m --memory-swap 768m \
+  --log-driver awslogs \
+  --log-opt "awslogs-region=${REGION}" \
+  --log-opt "awslogs-group=${LOG_GROUP}" \
+  --log-opt "awslogs-stream=${LOG_STREAM}" \
+  "$IMAGE"
+SCRIPT
+
+# ---------------------------------------------------------------------------
+# The unit. This is what ECS used to do, and all that is left of what it did.
+#
+# `Restart=always` is the entire supervision requirement: D-013 has the
+# entrypoint block on `wait -n` so the first of the three processes to die takes
+# the container with it, and this is the half that starts it again.
+# ---------------------------------------------------------------------------
+install -m 0644 /dev/stdin /etc/systemd/system/flakehound.service <<'UNIT'
+[Unit]
+Description=flakehound: the API, the worker, and the Cloudflare tunnel in one container
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=exec
+Restart=always
+RestartSec=15s
+# Rate limiting is off on purpose. The default gives up after five restarts and
+# leaves the unit failed — and there is no shell on this box to start it again,
+# so a service that has stopped trying is a service that is down until someone
+# launches a new instance. Fifteen seconds between attempts is already not a hot
+# loop, and ECS would have gone on replacing the task forever too.
+StartLimitIntervalSec=0
+
+ExecStartPre=/usr/local/bin/flakehound-secrets
+ExecStartPre=/usr/local/bin/flakehound-image
+ExecStartPre=-/usr/bin/docker rm -f flakehound
+ExecStart=/usr/local/bin/flakehound-run
+ExecStop=/usr/bin/docker stop --time 30 flakehound
+TimeoutStopSec=45
+
+[Install]
+WantedBy=multi-user.target
+UNIT
 
 # ---------------------------------------------------------------------------
 # Boot self-test. Proves the four things that can only be wrong on a real box —
@@ -158,6 +277,11 @@ async def main() -> None:
 asyncio.run(main())
 PY
 
+/usr/local/bin/flakehound-secrets
+/usr/local/bin/flakehound-image
+# shellcheck disable=SC1091
+. /run/flakehound/runtime
+
 docker run --rm \
   --name flakehound-selftest \
   --env-file /run/flakehound/env \
@@ -167,6 +291,26 @@ docker run --rm \
   --log-opt "awslogs-region=${REGION}" \
   --log-opt "awslogs-group=${LOG_GROUP}" \
   --log-opt "awslogs-stream=selftest/${INSTANCE_ID}" \
-  "${ECR}:latest" python selftest.py
+  "$IMAGE" python selftest.py
 
-echo "flakehound bootstrap complete on ${INSTANCE_ID}"
+systemctl daemon-reload
+systemctl enable --now flakehound
+
+# Boot is not finished until the container answers for itself. A unit that
+# started is not a service that works, and this is the last moment anything can
+# be observed from inside the box.
+code=000
+for _ in $(seq 1 45); do
+  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/healthz || true)
+  [[ "$code" == "200" ]] && break
+  sleep 2
+done
+
+if [[ "$code" != "200" ]]; then
+  echo "flakehound.service never answered /healthz on loopback (last code ${code})"
+  systemctl status flakehound --no-pager --full || true
+  journalctl -u flakehound --no-pager --lines 100 || true
+  exit 1
+fi
+
+echo "flakehound bootstrap complete on ${INSTANCE_ID}: healthz=${code} image=${IMAGE}"
