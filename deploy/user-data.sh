@@ -1,10 +1,12 @@
 #!/bin/bash
 # Bootstrap for the one instance that runs flakehound.
 #
-# Passed to `ec2 run-instances --user-data`, so this file is the whole
-# configuration of the box: there is no console step and nothing typed by hand,
-# and the four scripts and the unit file it installs are embedded here rather
-# than fetched, because a fresh box has no way to read a private repository.
+# This file is a template. Production identifiers are filled by
+# deploy/render-user-data.sh from deploy/production.env, which is not in git.
+# Pass the rendered script to `ec2 run-instances --user-data`, not this file.
+#
+# The four scripts and the unit file it installs are embedded rather than
+# fetched, so a fresh box does not depend on github.com at boot.
 #
 # The instance is cattle. There is no shell on it (the build's IAM user is
 # denied every SSM action), so changing how it is set up means editing this file
@@ -18,8 +20,16 @@
 # container dialling out to Cloudflare.
 set -euo pipefail
 
+# Becomes a 12-digit account id after render. The comparison is against a
+# glob, not the placeholder spelling, so this line still works once filled.
+_ACCOUNT='__AWS_ACCOUNT_ID__'
+if [[ "$_ACCOUNT" == *__* ]]; then
+  echo "deploy/user-data.sh is a template. Render it with deploy/render-user-data.sh before passing it to EC2." >&2
+  exit 1
+fi
+
 REGION=us-east-1
-ECR=753397111940.dkr.ecr.us-east-1.amazonaws.com/flakehound
+ECR=__AWS_ACCOUNT_ID__.dkr.ecr.us-east-1.amazonaws.com/flakehound
 LOG_GROUP=/flakehound/app
 INIT_LOG=/var/log/flakehound-init.log
 
@@ -89,7 +99,7 @@ umask 077
 
 REGION=us-east-1
 RUN_DIR=/run/flakehound
-RDS_SECRET='arn:aws:secretsmanager:us-east-1:753397111940:secret:rds!db-ec283f03-6478-49af-b495-7c5aecb47d4c-7uHXmU'
+RDS_SECRET='__RDS_SECRET_ARN__'
 
 secret() {
   aws secretsmanager get-secret-value --region "$REGION" \
@@ -107,7 +117,7 @@ db_password=$(printf '%s' "$rds" | python3 -c 'import json,sys; print(json.load(
 # The App key is a PEM. `docker --env-file` cannot carry a value with newlines,
 # so the key goes to a file and the app is pointed at it. That is the same shape
 # local development already uses. Owned by the container's uid, not by root.
-secret 'arn:aws:secretsmanager:us-east-1:753397111940:secret:flakehound/github-app-private-key-SMRJmp' \
+secret '__GITHUB_APP_PRIVATE_KEY_SECRET_ARN__' \
   > "${RUN_DIR}/github-app.pem"
 chown 10001:10001 "${RUN_DIR}/github-app.pem"
 chmod 0400 "${RUN_DIR}/github-app.pem"
@@ -116,17 +126,17 @@ cat > "${RUN_DIR}/env" <<EOF
 APP_ENV=production
 LOG_LEVEL=info
 PORT=8000
-DB_HOST=flakehound-db.c47a6ai2o1w8.us-east-1.rds.amazonaws.com
+DB_HOST=__DB_HOST__
 DB_PORT=5432
 DB_NAME=flakehound
 DB_USER=${db_user}
 DB_PASSWORD=${db_password}
-GITHUB_APP_ID=4792446
+GITHUB_APP_ID=__GITHUB_APP_ID__
 GITHUB_APP_PRIVATE_KEY_PATH=/run/secrets/github-app.pem
-OBSERVATION_INSTALLATION_ID=158221992
-GITHUB_WEBHOOK_SECRET=$(secret 'arn:aws:secretsmanager:us-east-1:753397111940:secret:flakehound/github-webhook-secret-Iv7fNm')
-INTERNAL_API_TOKEN=$(secret 'arn:aws:secretsmanager:us-east-1:753397111940:secret:flakehound/internal-api-token-EmFPqI')
-TUNNEL_TOKEN=$(secret 'arn:aws:secretsmanager:us-east-1:753397111940:secret:flakehound/tunnel-token-HiW65T')
+OBSERVATION_INSTALLATION_ID=__OBSERVATION_INSTALLATION_ID__
+GITHUB_WEBHOOK_SECRET=$(secret '__GITHUB_WEBHOOK_SECRET_ARN__')
+INTERNAL_API_TOKEN=$(secret '__INTERNAL_API_TOKEN_SECRET_ARN__')
+TUNNEL_TOKEN=$(secret '__TUNNEL_TOKEN_SECRET_ARN__')
 EOF
 chmod 0600 "${RUN_DIR}/env"
 SCRIPT
@@ -143,7 +153,7 @@ install -m 0755 /dev/stdin /usr/local/bin/flakehound-image <<'SCRIPT'
 set -euo pipefail
 
 REGION=us-east-1
-ECR=753397111940.dkr.ecr.us-east-1.amazonaws.com/flakehound
+ECR=__AWS_ACCOUNT_ID__.dkr.ecr.us-east-1.amazonaws.com/flakehound
 TAG="${1:-latest}"
 RUN_DIR=/run/flakehound
 

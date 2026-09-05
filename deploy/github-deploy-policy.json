@@ -19,7 +19,7 @@
         "ecr:PutImage",
         "ecr:UploadLayerPart"
       ],
-      "Resource": "arn:aws:ecr:us-east-1:753397111940:repository/flakehound"
+      "Resource": "arn:aws:ecr:us-east-1:__AWS_ACCOUNT_ID__:repository/flakehound"
     }
   ]
 }

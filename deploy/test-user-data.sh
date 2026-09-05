@@ -5,6 +5,10 @@
 #   docker run --rm -v "$PWD/deploy:/deploy:ro" amazonlinux:2023 \
 #     bash /deploy/test-user-data.sh
 #
+# The bootstrap file is a template. This harness renders it with stub
+# identifiers first, then runs the result. Real account ids never enter
+# the container.
+#
 # This exists because there is no shell on the real box. A bootstrap that dies
 # halfway is invisible until after it has taken production down, which is
 # precisely what happened the first time this file did not exist: the self-test
@@ -86,7 +90,33 @@ mkdir -p /etc/systemd/system
 
 # The container's uid does not exist here, and `chown 10001:10001` is one of the
 # things worth proving works.
-bash /deploy/user-data.sh
+
+if bash /deploy/user-data.sh; then
+  echo "FAIL  unrendered user-data.sh ran" >&2
+  exit 1
+fi
+echo "ok    template refuses to run unrendered"
+echo
+
+# The deploy mount is read-only, so the rendered script lands in /tmp. Stub
+# identifiers keep the aws stub's `rds!db` / `github-app-private-key` matches.
+cat > /tmp/production.env <<'EOF'
+AWS_ACCOUNT_ID=000000000000
+DB_HOST=flakehound-db.example.invalid
+RDS_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:rds!db-stub
+GITHUB_APP_PRIVATE_KEY_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:flakehound/github-app-private-key-stub
+GITHUB_WEBHOOK_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:flakehound/github-webhook-secret-stub
+INTERNAL_API_TOKEN_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:flakehound/internal-api-token-stub
+TUNNEL_TOKEN_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:flakehound/tunnel-token-stub
+GITHUB_APP_ID=1
+OBSERVATION_INSTALLATION_ID=1
+EOF
+bash /deploy/render-user-data.sh /tmp/production.env > /tmp/user-data.sh
+if grep -qE '__[A-Z0-9_]+__' /tmp/user-data.sh; then
+  echo "FAIL  render left a placeholder in user-data" >&2
+  exit 1
+fi
+bash /tmp/user-data.sh
 
 echo
 echo "=== what the bootstrap left behind ==="

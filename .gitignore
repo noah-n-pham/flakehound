@@ -18,6 +18,13 @@ out/
 .env.*
 !.env.example
 *.pem
+deploy/production.env
+
+# Local build scaffolding — not part of the product. Kept out of the
+# committed tree so a clone cannot `git add docs/` by accident.
+.cursor/
+docs/*
+!docs/BENCHMARKS.md
 
 # OS
 .DS_Store
